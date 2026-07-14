@@ -29,10 +29,14 @@ import type { ProposalViewItem } from "@/components/diabeo/patient/ProposalList"
 export function PatientInsulinClient({
   patientId,
   data,
+  canRestructure = false,
   proposals = [],
 }: {
   patientId: number
   data: TreatmentView
+  /** US-2663 — le patient peut restructurer ses créneaux (maturité ≠ JUNIOR). Dérivé serveur ; la garde
+   *  serveur `evaluatePatientGroupedGate` reste l'autorité de sûreté (enveloppe minute-par-minute). */
+  canRestructure?: boolean
   /** US-2664 — demandes en attente DU PATIENT (`source=patient`, filtré serveur). */
   proposals?: ProposalViewItem[]
 }) {
@@ -40,7 +44,7 @@ export function PatientInsulinClient({
   const mutate = usePagePatientMutator(patientId)
   return (
     <PatientRecordProvider fetchAnalytics={fetchAnalytics} mutate={mutate}>
-      <PatientInsulinView data={data} canPropose proposals={proposals} />
+      <PatientInsulinView data={data} canPropose canRestructure={canRestructure} proposals={proposals} />
     </PatientRecordProvider>
   )
 }

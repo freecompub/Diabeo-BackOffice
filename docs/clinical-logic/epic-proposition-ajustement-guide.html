@@ -1,0 +1,1045 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diabeo — Guide du processus de proposition d'ajustement d'insuline</title>
+<style>
+  :root{
+    --teal-700:#0f766e; --teal-600:#0D9488; --teal-50:#f0fdfa; --teal-100:#ccfbf1;
+    --coral-600:#F97316; --coral-50:#fff7ed;
+    --ink:#1F2937; --ink-2:#4b5563; --muted:#6B7280; --line:#e5e7eb; --line-2:#d1d5db;
+    --bg:#ffffff; --bg-2:#f8fafc; --bg-3:#f3f4f6;
+    --g-normal:#10B981; --g-normal-bg:#ecfdf5;
+    --g-high:#F59E0B; --g-high-bg:#fffbeb;
+    --g-crit:#EF4444; --g-crit-bg:#fef2f2;
+    --blue:#2563eb; --blue-bg:#eff6ff;
+    --amber:#b45309; --amber-bg:#fffbeb;
+    --green:#047857; --green-bg:#ecfdf5;
+    --red:#b91c1c; --red-bg:#fef2f2;
+    --radius:10px;
+    --mono:"SFMono-Regular",ui-monospace,"JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--bg);line-height:1.6;font-size:16px}
+  .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  a{color:var(--teal-700);text-decoration:none}
+  a:hover{text-decoration:underline}
+  h1,h2,h3,h4{line-height:1.25;color:var(--ink);font-weight:700}
+  h2{font-size:1.7rem;margin:3.2rem 0 .4rem;padding-top:.6rem;border-top:3px solid var(--teal-600)}
+  h2 .num{color:var(--teal-600);font-variant-numeric:tabular-nums}
+  h3{font-size:1.25rem;margin:2rem 0 .5rem;color:var(--teal-700)}
+  h4{font-size:1.03rem;margin:1.4rem 0 .3rem;color:var(--ink)}
+  p{margin:.5rem 0}
+  code,.mono{font-family:var(--mono);font-size:.86em;background:var(--bg-3);padding:.1em .4em;border-radius:5px;color:#0f766e;word-break:break-word}
+  .lead{font-size:1.08rem;color:var(--ink-2)}
+  header.hero{background:linear-gradient(135deg,var(--teal-700),var(--teal-600));color:#fff;padding:52px 0 40px}
+  header.hero .wrap{color:#fff}
+  header.hero h1{color:#fff;font-size:2.15rem;margin:0 0 .4rem;letter-spacing:-.5px}
+  header.hero p{color:#d1fae5;max-width:760px}
+  .pill-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .pill{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:999px;padding:5px 13px;font-size:.82rem;font-weight:600}
+  .meta{margin-top:16px;font-size:.82rem;color:#a7f3d0}
+  /* disclaimer */
+  .disclaimer{background:var(--amber-bg);border:1px solid #fcd34d;border-left:5px solid var(--coral-600);border-radius:var(--radius);padding:16px 20px;margin:24px 0}
+  .disclaimer strong{color:#92400e}
+  /* TOC */
+  nav.toc{background:var(--bg-2);border:1px solid var(--line);border-radius:var(--radius);padding:20px 24px;margin:28px 0}
+  nav.toc h2{border:0;margin:0 0 .6rem;padding:0;font-size:1.15rem;color:var(--teal-700)}
+  nav.toc ol{margin:0;padding-left:1.3rem;columns:2;column-gap:36px}
+  nav.toc li{margin:.22rem 0;break-inside:avoid}
+  @media(max-width:720px){nav.toc ol{columns:1}}
+  /* callouts */
+  .callout{border-radius:var(--radius);padding:14px 18px;margin:16px 0;border:1px solid var(--line);border-left-width:5px}
+  .callout .ct{font-weight:700;font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;margin-bottom:.3rem;display:flex;align-items:center;gap:7px}
+  .callout.pass{background:var(--green-bg);border-color:#a7f3d0;border-left-color:var(--g-normal)}
+  .callout.pass .ct{color:var(--green)}
+  .callout.block{background:var(--red-bg);border-color:#fecaca;border-left-color:var(--g-crit)}
+  .callout.block .ct{color:var(--red)}
+  .callout.internal{background:var(--amber-bg);border-color:#fde68a;border-left-color:var(--g-high)}
+  .callout.internal .ct{color:var(--amber)}
+  .callout.science{background:var(--blue-bg);border-color:#bfdbfe;border-left-color:var(--blue)}
+  .callout.science .ct{color:var(--blue)}
+  .callout.note{background:var(--teal-50);border-color:var(--teal-100);border-left-color:var(--teal-600)}
+  .callout.note .ct{color:var(--teal-700)}
+  /* tables */
+  .tbl-wrap{overflow-x:auto;margin:16px 0;border:1px solid var(--line);border-radius:var(--radius)}
+  table{border-collapse:collapse;width:100%;font-size:.9rem;min-width:520px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  thead th{background:var(--teal-700);color:#fff;font-weight:600;font-size:.82rem;letter-spacing:.02em;position:sticky;top:0}
+  tbody tr:nth-child(even){background:var(--bg-2)}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-size:.85rem;white-space:nowrap}
+  .tag{display:inline-block;font-size:.72rem;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+  .tag.sci{background:var(--blue-bg);color:var(--blue);border:1px solid #bfdbfe}
+  .tag.int{background:var(--amber-bg);color:var(--amber);border:1px solid #fde68a}
+  .tag.dev{background:var(--bg-3);color:var(--ink-2);border:1px solid var(--line-2)}
+  .tag.http{background:#111827;color:#fff;font-family:var(--mono)}
+  .tag.role{background:var(--teal-50);color:var(--teal-700);border:1px solid var(--teal-100)}
+  /* steps */
+  ol.steps{counter-reset:s;list-style:none;padding-left:0;margin:16px 0}
+  ol.steps>li{counter-increment:s;position:relative;padding:8px 0 8px 46px;border-bottom:1px dashed var(--line)}
+  ol.steps>li::before{content:counter(s);position:absolute;left:0;top:8px;width:30px;height:30px;background:var(--teal-600);color:#fff;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:.9rem}
+  ol.steps>li:last-child{border-bottom:0}
+  /* UI mockups */
+  figure.mock{margin:22px 0;border:1px solid var(--line-2);border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 8px 24px rgba(15,23,42,.06)}
+  figure.mock figcaption{background:var(--bg-2);border-top:1px solid var(--line);padding:9px 14px;font-size:.8rem;color:var(--muted)}
+  figure.mock figcaption b{color:var(--ink-2)}
+  .win-bar{display:flex;align-items:center;gap:6px;padding:9px 13px;background:#f1f5f9;border-bottom:1px solid var(--line)}
+  .win-bar i{width:11px;height:11px;border-radius:50%;display:inline-block}
+  .win-bar .u{background:#f87171}.win-bar .m{background:#fbbf24}.win-bar .g{background:#34d399}
+  .win-bar span{margin-left:8px;font-size:.78rem;color:var(--muted);font-family:var(--mono)}
+  .app{padding:18px 20px;font-size:.9rem}
+  .app .h{font-weight:700;font-size:1.05rem;margin-bottom:2px}
+  .app .sub{color:var(--muted);font-size:.82rem;margin-bottom:14px}
+  .app .field{margin:10px 0}
+  .app label{display:block;font-size:.78rem;color:var(--ink-2);font-weight:600;margin-bottom:4px}
+  .app input,.app .fake-input{border:1px solid var(--line-2);border-radius:8px;padding:7px 10px;font-size:.9rem;width:100%;background:#fff;font-family:var(--mono)}
+  .app .row-tbl{width:100%;border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:.85rem}
+  .app .row-tbl .r{display:grid;grid-template-columns:1fr 1fr 1.2fr;gap:0}
+  .app .row-tbl .r>div{padding:7px 10px;border-bottom:1px solid var(--line)}
+  .app .row-tbl .r.hd>div{background:var(--bg-3);font-weight:600;font-size:.75rem;color:var(--ink-2)}
+  .app .row-tbl .r.chg>div{background:var(--g-high-bg)}
+  .btn{display:inline-block;padding:8px 16px;border-radius:8px;font-weight:600;font-size:.86rem;border:1px solid transparent;cursor:default}
+  .btn.primary{background:var(--teal-600);color:#fff}
+  .btn.ghost{background:#fff;color:var(--ink-2);border-color:var(--line-2)}
+  .btn.danger{background:#fff;color:var(--red);border-color:#fecaca}
+  .btn.disabled{background:var(--bg-3);color:var(--muted);border-color:var(--line)}
+  .banner{border-radius:8px;padding:9px 12px;font-size:.83rem;margin:10px 0}
+  .banner.ok{background:var(--g-normal-bg);color:var(--green);border:1px solid #a7f3d0}
+  .banner.warn{background:var(--g-high-bg);color:var(--amber);border:1px solid #fde68a}
+  .banner.err{background:var(--g-crit-bg);color:var(--red);border:1px solid #fecaca}
+  .banner.info{background:var(--bg-3);color:var(--ink-2);border:1px solid var(--line)}
+  .chk{display:flex;gap:9px;align-items:flex-start;background:var(--g-high-bg);border:1px solid #fde68a;border-radius:8px;padding:10px 12px;font-size:.83rem}
+  .chk .box{width:17px;height:17px;border:2px solid var(--amber);border-radius:4px;flex:none;margin-top:2px}
+  .badge-inline{display:inline-block;font-size:.7rem;font-weight:700;padding:1px 7px;border-radius:999px;vertical-align:middle}
+  .b-src{background:var(--teal-50);color:var(--teal-700);border:1px solid var(--teal-100)}
+  .b-hypo{background:var(--g-crit-bg);color:var(--red);border:1px solid #fecaca}
+  .b-cap{background:var(--g-high-bg);color:var(--amber);border:1px solid #fde68a}
+  .b-conf{background:var(--blue-bg);color:var(--blue);border:1px solid #bfdbfe}
+  /* svg chart */
+  .chartfig{margin:18px 0;border:1px solid var(--line);border-radius:var(--radius);padding:14px;background:#fff}
+  .chartfig figcaption{font-size:.84rem;color:var(--muted);margin-top:8px}
+  svg.glyco{width:100%;height:auto;display:block}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:.76rem;color:var(--ink-2);margin-top:6px}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:middle}
+  /* misc */
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .kv{font-size:.9rem}
+  .kv b{color:var(--teal-700)}
+  .anchor{scroll-margin-top:16px}
+  footer.foot{margin-top:60px;padding:30px 0;background:var(--bg-2);border-top:1px solid var(--line);font-size:.85rem;color:var(--muted)}
+  .backtop{font-size:.78rem;color:var(--muted);float:right}
+  hr.soft{border:0;border-top:1px solid var(--line);margin:26px 0}
+  .small{font-size:.82rem;color:var(--muted)}
+  sup.ref{font-size:.7em;color:var(--blue);font-weight:700}
+  @media print{
+    header.hero{background:var(--teal-700)!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    .callout,thead th,.tag,.app,figure.mock{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    nav.toc{break-after:page}
+    h2{break-after:avoid}
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <h1>Processus de proposition d'ajustement d'insuline</h1>
+    <p class="lead">Guide fonctionnel et clinique de l'épic « proposition groupée » (US‑2645 → US‑2663). Comment un patient, une infirmière ou un médecin propose un ajustement, comment l'algorithme calcule une proposition, quand elle passe ou est bloquée, et comment le médecin la valide.</p>
+    <div class="pill-row">
+      <span class="pill">👩‍⚕️ Médecins</span>
+      <span class="pill">🩺 Infirmier·ère·s</span>
+      <span class="pill">🧑 Patients</span>
+      <span class="pill">🛠️ Équipe technique</span>
+    </div>
+    <div class="meta">Document généré à partir du code source de l'épic (branche <code style="background:rgba(255,255,255,.15);color:#ecfeff">main</code>). Chaque comportement décrit correspond au code ; chaque constante est référencée par son fichier source.</div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="disclaimer">
+    <strong>⚠️ Nature du document &amp; principe de sécurité fondamental.</strong>
+    Ce guide est un <b>support de compréhension</b>, pas une notice de dispositif médical.
+    Le principe cardinal du système est qu'<b>aucune proposition n'est jamais appliquée automatiquement</b> :
+    toute proposition — qu'elle vienne du patient, d'un soignant ou de l'algorithme — naît à l'état
+    <code>pending</code> et n'entre en vigueur qu'après <b>validation explicite d'un médecin</b>
+    (<abbr title="Architecture Decision Record">ADR</abbr> #13). L'algorithme est un <b>outil d'aide à la décision déterministe</b> (sans intelligence artificielle) ;
+    il ne prescrit pas.
+    <br><br>
+    <strong>À propos des justifications scientifiques.</strong> Les références citées (<a href="#refs">§11</a>) étayent les
+    <b>principes cliniques</b>. Les <b>valeurs numériques spécifiques</b> (seuils, caps, fenêtres) sont, pour la plupart, des
+    <b>calibrations internes Diabeo</b> validées par l'équipe médicale — elles sont explicitement marquées
+    <span class="tag int">Décision interne</span> dans ce document. Aucune citation n'est inventée ; les localisateurs
+    bibliographiques doivent être vérifiés sur la source primaire avant tout usage réglementaire.
+  </div>
+
+  <nav class="toc" aria-label="Sommaire">
+    <h2>Sommaire</h2>
+    <ol>
+      <li><a href="#s1">Vue d'ensemble &amp; cycle de vie</a></li>
+      <li><a href="#s2">Acteurs, rôles &amp; maturité</a></li>
+      <li><a href="#s3">Proposition du patient (+ blocages)</a></li>
+      <li><a href="#s4">Proposition infirmière / médecin</a></li>
+      <li><a href="#s5">Validation par le médecin</a></li>
+      <li><a href="#s6">Accusé &amp; actualisation patient</a></li>
+      <li><a href="#s7">L'algorithme : états &amp; analyseurs</a></li>
+      <li><a href="#s8">Cas passants &amp; bloquants (exemples)</a></li>
+      <li><a href="#s9">Catalogue des constantes</a></li>
+      <li><a href="#s10">Glossaire</a></li>
+      <li><a href="#refs">Références scientifiques</a></li>
+    </ol>
+  </nav>
+
+  <!-- ================= 1 ================= -->
+  <h2 id="s1" class="anchor"><span class="num">1.</span> Vue d'ensemble &amp; cycle de vie</h2>
+
+  <p>Une <b>proposition d'ajustement</b> est une modification suggérée d'un paramètre d'insulinothérapie
+  (sensibilité, ratio, débit basal, dose fixe). L'épic couvre trois émetteurs et une seule autorité de validation :</p>
+
+  <div class="grid2">
+    <div class="callout note"><div class="ct">Les 3 émetteurs</div>
+      <ul style="margin:.2rem 0 0;padding-left:1.1rem">
+        <li><b>Le patient</b> — via son application, sur son propre dossier.</li>
+        <li><b>Le soignant</b> — infirmier·ère ou médecin, depuis le back‑office.</li>
+        <li><b>L'algorithme</b> — moteur déterministe exécuté périodiquement (cron).</li>
+      </ul>
+    </div>
+    <div class="callout note"><div class="ct">L'unique autorité</div>
+      <p style="margin:.2rem 0 0">Seul le <b>médecin</b> accepte ou rejette. L'infirmière et le patient <b>proposent</b> ;
+      le médecin peut aussi <b>écrire directement</b> la configuration (voie autoritaire, sans validation tierce).</p>
+    </div>
+  </div>
+
+  <h3>1.1 « Proposition groupée » : tout le jeu de créneaux, jamais une valeur isolée</h3>
+  <p>Depuis US‑2663 (S5), toute édition non autoritaire est proposée <b>en bloc</b> : la proposition porte la
+  <b>disposition entière</b> d'un levier (l'ensemble des créneaux horaires), et non une valeur unitaire. Le modèle
+  est <code>SlotSetProposal</code>. Cela évite la « dérive de base » — qu'un ajustement isolé et périmé n'écrase plus
+  tard un réglage médecin récent (par ex. une baisse post‑hypoglycémie). La voie « par‑valeur » historique
+  (<code>AdjustmentProposal</code>) subsiste en <b>lecture/registre</b> uniquement.</p>
+
+  <h3>1.2 Les quatre leviers ajustables</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Levier</th><th>Ce qu'il règle</th><th>Modèle de créneau</th><th>Unité</th></tr></thead>
+    <tbody>
+      <tr><td><b>ISF</b> — Facteur de sensibilité à l'insuline</td><td>De combien 1 U d'insuline fait baisser la glycémie (correction)</td><td>Créneau horaire <code>[startHour, endHour)</code></td><td class="num">g/L·U</td></tr>
+      <tr><td><b>ICR</b> — Ratio insuline/glucides</td><td>Grammes de glucides couverts par 1 U (bolus repas)</td><td>Créneau horaire</td><td class="num">g/U</td></tr>
+      <tr><td><b>Basale POMPE</b></td><td>Débit basal continu de la pompe par tranche</td><td>Créneau <code>"HH:MM"</code> minute‑précis</td><td class="num">U/h</td></tr>
+      <tr><td><b>Basale STYLO (MDI)</b></td><td>Dose(s) d'insuline lente (1 injection/jour ou 2)</td><td><code>daily</code>, ou <code>morning</code>+<code>evening</code></td><td class="num">U totales</td></tr>
+      <tr><td><b>Dose fixe</b> (« doses simples »)</td><td>Dose figée par moment (matin/midi/soir/nuit) et par usage</td><td>Clé <code>(usage, moment)</code></td><td class="num">U</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small">Note : la voie <b>patient</b> ne peut proposer que ISF/ICR/basale ; la <b>dose fixe</b> n'est proposable que par un soignant.</p>
+
+  <h3 id="lifecycle">1.3 Cycle de vie d'une proposition</h3>
+  <p>Une proposition traverse les états de l'énumération <code>ProposalStatus</code> :
+  <code>pending</code>, <code>accepted</code>, <code>rejected</code>, <code>superseded</code>, <code>expired</code>.</p>
+
+  <figure class="chartfig">
+    <svg class="glyco" viewBox="0 0 900 260" role="img" aria-label="Diagramme des états d'une proposition">
+      <defs>
+        <marker id="arw" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="#6B7280"/></marker>
+      </defs>
+      <!-- nodes -->
+      <g font-family="system-ui" font-size="14" text-anchor="middle">
+        <rect x="40" y="105" width="140" height="50" rx="10" fill="#f0fdfa" stroke="#0D9488" stroke-width="2"/>
+        <text x="110" y="128" font-weight="700" fill="#0f766e">Création</text>
+        <text x="110" y="146" font-size="11" fill="#6B7280">patient / pro / moteur</text>
+
+        <rect x="300" y="105" width="150" height="50" rx="10" fill="#fffbeb" stroke="#F59E0B" stroke-width="2"/>
+        <text x="375" y="128" font-weight="700" fill="#b45309">pending</text>
+        <text x="375" y="146" font-size="11" fill="#6B7280">en attente médecin</text>
+
+        <rect x="600" y="30" width="150" height="46" rx="10" fill="#ecfdf5" stroke="#10B981" stroke-width="2"/>
+        <text x="675" y="52" font-weight="700" fill="#047857">accepted</text>
+        <text x="675" y="68" font-size="11" fill="#6B7280">+ appliqué à la config</text>
+
+        <rect x="600" y="105" width="150" height="46" rx="10" fill="#fef2f2" stroke="#EF4444" stroke-width="2"/>
+        <text x="675" y="127" font-weight="700" fill="#b91c1c">rejected</text>
+
+        <rect x="600" y="180" width="150" height="46" rx="10" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2"/>
+        <text x="675" y="202" font-weight="700" fill="#4b5563">superseded</text>
+        <text x="675" y="217" font-size="11" fill="#6B7280">remplacée</text>
+      </g>
+      <g stroke="#6B7280" stroke-width="2" fill="none" marker-end="url(#arw)">
+        <path d="M180,130 L296,130"/>
+        <path d="M450,120 L596,60"/>
+        <path d="M450,130 L596,128"/>
+        <path d="M450,140 L596,198"/>
+      </g>
+      <text x="238" y="122" font-size="11" fill="#6B7280" text-anchor="middle">soumission</text>
+      <text x="520" y="80" font-size="11" fill="#047857" text-anchor="middle" font-weight="600">accept (médecin)</text>
+      <text x="524" y="122" font-size="11" fill="#b91c1c" text-anchor="middle" font-weight="600">reject (médecin)</text>
+      <text x="520" y="182" font-size="11" fill="#4b5563" text-anchor="middle">nouvelle proposition compatible</text>
+    </svg>
+    <figcaption>États et transitions (<code>ProposalStatus</code>, <code>prisma/schema.prisma:216‑222</code>). <b>superseded</b> = supersession programmatique à la création d'une nouvelle proposition de même classe d'origine (<code>reviewedBy: null</code>). <b>expired</b> est prévu par le modèle et compté dans les statistiques, mais aucune transition automatique n'est câblée dans le code lu.</figcaption>
+  </figure>
+
+  <div class="callout note"><div class="ct">Invariant « 1 pending » &amp; coexistence (D2)</div>
+  <p style="margin:.2rem 0 0">Au plus <b>une proposition en attente par (patient × paramètre × classe d'origine)</b>, garanti en base par un index unique partiel
+  (<code>slot_set_proposals_one_pending_per_param_origin</code>). La supersession se fait <b>par classe</b> : l'algorithme ne supersède que l'algorithme, l'humain ne supersède que l'humain.
+  Conséquence : une proposition <b>moteur</b> et une demande <b>humaine</b> peuvent <b>coexister</b> sur le même paramètre — le médecin voit les deux et arbitre (<code>slot-set-proposal.service.ts:284‑300</code>).</p>
+  </div>
+
+  <!-- ================= 2 ================= -->
+  <h2 id="s2" class="anchor"><span class="num">2.</span> Acteurs, rôles &amp; maturité <a href="#s1" class="backtop">↑ haut</a></h2>
+
+  <h3>2.1 Qui peut faire quoi (RBAC)</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Action</th><th>Rôles autorisés</th><th>Provenance <code>source</code></th><th>Effet</th></tr></thead>
+    <tbody>
+      <tr><td><b>Écrire directement</b> la config (voie autoritaire)</td><td><span class="tag role">DOCTOR</span></td><td>—</td><td>Écrit la configuration <b>en vigueur immédiatement</b></td></tr>
+      <tr><td><b>Proposer</b> (soignant)</td><td><span class="tag role">DOCTOR → doctor</span> <span class="tag role">NURSE → nurse</span></td><td>dérivée de la session</td><td>Crée une proposition <code>pending</code></td></tr>
+      <tr><td><b>Proposer</b> (patient)</td><td><span class="tag role">VIEWER → patient</span> (sur son propre dossier)</td><td>forcée à <code>"patient"</code></td><td>Crée une proposition <code>pending</code></td></tr>
+      <tr><td><b>Proposer</b> (moteur)</td><td>système (userId null)</td><td><code>"algorithm"</code></td><td>Crée une proposition <code>pending</code></td></tr>
+      <tr><td><b>Accepter / rejeter</b></td><td><span class="tag role">DOCTOR</span> (ADMIN hiérarchique)</td><td>—</td><td>Valide ou refuse ; l'accept applique la config</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="callout note"><div class="ct">Anti‑usurpation</div>
+  <p style="margin:.2rem 0 0">La provenance (<code>source</code>) est <b>toujours dérivée côté serveur</b> à partir de l'identité de session — <b>jamais lue dans le corps de la requête</b> (ADR #27). Un patient ne peut pas se faire passer pour un médecin. <b>ADMIN est exclu de toute proposition</b> (rôle technique, pas d'identité clinique) : refusé en 403 sur la voie soignant (<code>slot-set-proposals/route.ts:96</code>).</p>
+  </div>
+
+  <h3>2.2 Niveaux de maturité du patient</h3>
+  <p>Le médecin attribue au patient un <b>niveau d'autonomie</b> (<code>MaturityLevel</code>) qui conditionne ce que le patient peut se proposer à lui‑même. Trois niveaux seulement — <code>JUNIOR</code>, <code>INTERMEDIATE</code>, <code>CONFIRME</code> — pose réservée <b>exactement au médecin</b> (<code>PATCH /api/patients/maturity</code>). Par défaut : <code>JUNIOR</code> (le plus restrictif).</p>
+
+  <div class="callout note"><div class="ct">Le niveau « EXPERT » n'existe pas / plus</div>
+  <p style="margin:.2rem 0 0">Il n'y a <b>pas</b> de niveau EXPERT ni d'auto‑application : le patient « expert » dont l'édition s'appliquait automatiquement a été <b>totalement retiré</b> (ADR #28). Quel que soit le niveau, une édition patient devient <b>toujours</b> une proposition <code>pending</code> revue par un médecin.</p>
+  </div>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Ce que le patient peut se proposer</th><th>JUNIOR</th><th>INTERMEDIATE</th><th>CONFIRME</th></tr></thead>
+    <tbody>
+      <tr><td>Ajuster les <b>valeurs</b> (mêmes créneaux)</td><td>✅</td><td>✅</td><td>✅</td></tr>
+      <tr><td>Proposer une <b>baisse de basale POMPE</b> (≤ 10 %)</td><td>❌</td><td>✅</td><td>✅</td></tr>
+      <tr><td>Proposer une <b>baisse de basale STYLO</b> (≤ min(10 %, 2 U)) <span class="small">+ accusé jour‑de‑maladie</span></td><td>❌</td><td>❌</td><td>✅</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small">Réf. : gate maturité <code>patient-grouped-gate.ts:119‑121</code> ; fail‑closed JUNIOR si maturité non résolue (<code>?? "JUNIOR"</code>). La <b>restructuration</b> des créneaux (ajout/suppression/déplacement d'horaires) est <b>toujours interdite</b> au patient côté serveur, quel que soit son niveau (voir <a href="#gate">§3.2</a>).</p>
+
+  <!-- ================= 3 ================= -->
+  <h2 id="s3" class="anchor"><span class="num">3.</span> Proposition du patient <a href="#s1" class="backtop">↑ haut</a></h2>
+
+  <p>Le patient propose depuis son application via <code>PUT /api/patient/insulin-slot-set</code>. La frontière d'accès est
+  <b>« own‑id strict »</b> : le serveur ne travaille que sur <i>le dossier du patient connecté</i> — un identifiant de dossier
+  n'est jamais accepté depuis la requête (anti‑énumération). La provenance est forcée à <code>patient</code>.</p>
+
+  <h3>3.1 Déroulé d'une soumission patient</h3>
+  <ol class="steps">
+    <li><b>Authentification.</b> Absente → <span class="tag http">401</span>.</li>
+    <li><b>Limitation de débit</b> anti‑abus. Dépassement → <span class="tag http">429</span> (avec <code>Retry‑After</code>).</li>
+    <li><b>Résolution du dossier propre</b> (<code>getOwnPatientId</code>). Aucun dossier (ex. un pro) → <span class="tag http">404</span> neutre.</li>
+    <li><b>Consentement RGPD</b> requis. Absent → <span class="tag http">403</span> <code>gdprConsentRequired</code>.</li>
+    <li><b>Validation du corps</b> : levier ∈ {ISF, ICR, basale} (<b>pas la dose fixe</b>), 1 à 24 créneaux, accusé jour‑de‑maladie optionnel. Invalide → <span class="tag http">400</span>.</li>
+    <li><b>Garde clinique patient</b> (<code>evaluatePatientGroupedGate</code>) — voir §3.2. Un blocage renvoie un code métier dédié.</li>
+    <li><b>Succès</b> → <span class="tag http">201</span> <code>{ outcome: "proposal", proposalId }</code>. La proposition est <code>pending</code>, transmise au médecin.</li>
+  </ol>
+
+  <h3 id="gate">3.2 La garde clinique : les blocages possibles</h3>
+  <p>Le cœur de sécurité de la voie patient est <code>evaluatePatientGroupedGate</code>. Une soumission conforme passe ;
+  sinon elle est <b>refusée</b> avec un code précis. Le mode de délivrance (stylo vs pompe) et la valeur « actuelle » de
+  chaque créneau sont <b>relus côté serveur</b> (anti‑falsification), jamais pris depuis la requête.</p>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Code de blocage</th><th>Condition exacte</th><th class="num">HTTP</th><th>Message patient</th></tr></thead>
+    <tbody>
+      <tr><td><code>structuralChangeNotAllowed</code></td><td>Le jeu proposé n'a pas <b>exactement les mêmes créneaux</b> que la base (nombre différent, ou une clé absente). Interdit la re‑partition, la bascule 1↔2 injections, l'ajout/retrait. <i>Un patient ajuste des valeurs, il ne restructure pas.</i></td><td class="num">422</td><td>« Vous pouvez seulement ajuster les valeurs, pas modifier les tranches horaires… contactez votre soignant. »</td></tr>
+      <tr><td><code>deliveryModeMismatch</code></td><td>La forme du jeu (stylo <code>kind</code> / pompe <code>startTime</code>) ne correspond pas au mode réel (<code>configType</code> LIVE). Anti‑usurpation de modalité.</td><td class="num">409</td><td>« Le mode d'administration a changé. Rechargez la page et réessayez. »</td></tr>
+      <tr><td><code>maturityTooLowForDecrease</code></td><td>Au moins une <b>baisse de basale</b> alors que la maturité est insuffisante : stylo → doit être CONFIRME ; pompe → doit être INTERMEDIATE ou CONFIRME (donc pas JUNIOR).</td><td class="num">403</td><td>« Votre niveau d'autonomie ne permet pas encore de proposer une baisse… Signalez‑la à votre soignant. »</td></tr>
+      <tr><td><code>dkaAcknowledgmentRequired</code></td><td>Au moins une <b>baisse de basale STYLO</b> sans accusé « jour‑de‑maladie » coché.</td><td class="num">422</td><td>« Confirmez l'accusé jour‑de‑maladie pour proposer une baisse de dose lente. »</td></tr>
+      <tr><td><code>patientDeltaTooLarge</code></td><td>Variation supérieure au cap patient : baisse basale <code>|Δ| &gt; capU</code> (pompe : 10 %×valeur ; stylo : min(10 %×valeur, 2 U)) ; sinon (hausse, ou tout ISF/ICR/dose‑fixe) <code>|Δ/valeur| &gt; 10 %</code>. ISF/ICR capés dans les <b>deux sens</b>.</td><td class="num">422</td><td>« Variation trop importante pour une proposition. Réduisez l'écart ou contactez votre soignant. »</td></tr>
+      <tr><td><code>noChangeProposed</code></td><td>Baisse basale STYLO <b>non actionnable</b> : <code>|Δ| &lt; 1 U</code> ou dose cible non délivrable (ex. ½ U sur un stylo unitaire).</td><td class="num">422</td><td>« Cette baisse est trop faible pour être appliquée. Ajustez la dose. »</td></tr>
+      <tr><td><code>nonInsulinNoDose</code></td><td>Mode dérivé serveur = <b>non insuliné</b> → frontière dispositif médical (aucune dose proposée). Lève un flag « à revoir en consultation ».</td><td class="num">409</td><td>(orienté vers consultation)</td></tr>
+      <tr><td><code>duplicatePendingProposal</code></td><td>Double‑soumission concurrente violant l'index « 1 pending ».</td><td class="num">409</td><td>—</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout block"><div class="ct">🔒 Pourquoi bloquer une baisse de basale « lente » sans accusé jour‑de‑maladie ?</div>
+  <p style="margin:.2rem 0 0">Réduire l'insuline <b>basale</b> pendant un épisode de maladie aiguë (fièvre, infection) est un facteur reconnu de déclenchement d'<b>acidocétose diabétique</b> (<abbr title="Diabetic Ketoacidosis">DKA</abbr>). Le code exige donc un accusé explicite <i>« je ne suis pas en jour‑de‑maladie »</i> avant toute baisse de dose lente stylo, et cet accusé est horodaté et immuable (<code>SlotSetProposal.sickDayAcknowledgedAt</code>). <b>Un seul accusé couvre toutes les baisses stylo du jeu</b> (décision D3).
+  <br><span class="tag sci">Principe scientifique</span> gestion « jour‑de‑maladie » / prévention DKA — ISPAD 2022, ADA Standards of Care <sup class="ref">R1,R8</sup>. Les <b>seuils numériques</b> (cap 10 % / 2 U, maturité CONFIRME) sont une <span class="tag int">décision interne</span>.</p>
+  </div>
+
+  <div class="callout note"><div class="ct">Cap patient = la moitié du cap moteur</div>
+  <p style="margin:.2rem 0 0">Une demande patient est plafonnée à <b>10 %</b> (<code>PATIENT_MAX_CHANGE_PERCENT</code>) là où l'algorithme peut aller à 20 %. Justification du code : « une demande patient est un <i>pas</i>, pas une <i>titration</i> ». <span class="tag int">Décision interne</span>.</p>
+  </div>
+
+  <h3>3.3 Les écrans du patient <span class="small">(reconstitutions fidèles des composants réels)</span></h3>
+  <div class="callout note"><div class="ct">À propos de ces visuels</div>
+  <p style="margin:.2rem 0 0">Les captures ci‑dessous sont des <b>reconstitutions fidèles</b> construites à partir de la structure des composants React réels et de leurs libellés (fichiers indiqués sous chaque figure) — et non des captures d'écran d'une instance en fonctionnement. Les libellés sont ceux du code (<code>messages/fr.json</code>).</p>
+  </div>
+
+  <figure class="mock">
+    <div class="win-bar"><i class="u"></i><i class="m"></i><i class="g"></i><span>Application patient — Proposer un ajustement</span></div>
+    <div class="app">
+      <div class="h">Proposer un ajustement — Ratio insuline/glucides (ICR)</div>
+      <div class="sub">Votre proposition porte sur l'ensemble des créneaux et sera transmise au médecin pour validation. Elle n'est pas appliquée immédiatement.</div>
+      <div class="row-tbl" role="table">
+        <div class="r hd"><div>Début</div><div>Fin</div><div>Valeur (g/U)</div></div>
+        <div class="r"><div>00h</div><div>06h</div><div><span class="fake-input" style="display:inline-block;width:70px;padding:3px 8px">12.0</span></div></div>
+        <div class="r chg"><div>06h</div><div>12h</div><div><span class="fake-input" style="display:inline-block;width:70px;padding:3px 8px;border-color:#0D9488">9.5</span></div></div>
+        <div class="r"><div>12h</div><div>22h</div><div><span class="fake-input" style="display:inline-block;width:70px;padding:3px 8px">11.0</span></div></div>
+      </div>
+      <div class="banner ok">✔ Couverture complète sur 24 h.</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+        <span class="btn ghost">Annuler</span><span class="btn primary">Envoyer la proposition</span>
+      </div>
+    </div>
+    <figcaption><b>Source :</b> <code>InsulinSlotSetDialog.tsx</code> (mode <code>propose</code>, audience <code>patient</code>). En mode patient, les <b>heures sont en lecture seule</b> (pas de restructuration) — seule la valeur est éditable. La ligne modifiée est mise en évidence.</figcaption>
+  </figure>
+
+  <figure class="mock">
+    <div class="win-bar"><i class="u"></i><i class="m"></i><i class="g"></i><span>Application patient — Basale stylo (baisse)</span></div>
+    <div class="app">
+      <div class="h">Proposer un ajustement — Débit basal</div>
+      <div class="sub">Votre proposition porte sur l'ensemble des créneaux et sera transmise au médecin pour validation.</div>
+      <div class="field"><label>Dose du soir</label><span class="fake-input" style="display:inline-block;width:120px">22 → 20 U</span></div>
+      <div class="chk"><span class="box"></span><div><b>Je confirme ne pas être en jour‑de‑maladie (risque d'acidocétose / DKA).</b><br><span class="small">Réduire l'insuline lente pendant un jour‑de‑maladie expose à l'acidocétose. En cas de maladie, contactez votre soignant avant toute baisse.</span></div></div>
+      <div class="banner err" style="margin-top:10px">⚠ Cochez l'accusé jour‑de‑maladie pour proposer cette baisse de dose.</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:8px">
+        <span class="btn ghost">Annuler</span><span class="btn disabled">Envoyer la proposition</span>
+      </div>
+    </div>
+    <figcaption><b>Source :</b> <code>InsulinStyloBasalDialog.tsx</code>. Pas de tableau horaire (une dose lente couvre la journée). L'accusé DKA n'apparaît que pour une <b>baisse</b> en audience patient, et bloque l'envoi tant qu'il n'est pas coché.</figcaption>
+  </figure>
+
+  <!-- ================= 4 ================= -->
+  <h2 id="s4" class="anchor"><span class="num">4.</span> Proposition infirmière / médecin <a href="#s1" class="backtop">↑ haut</a></h2>
+
+  <p>Les soignants proposent via <code>POST /api/slot-set-proposals</code> depuis le back‑office. Contrairement au patient,
+  ils <b>ne sont pas soumis à la garde clinique</b> (cap %, maturité, accusé DKA) : ce sont des professionnels. Ils peuvent
+  proposer les <b>quatre</b> leviers (dont la dose fixe).</p>
+
+  <h3>4.1 Déroulé</h3>
+  <ol class="steps">
+    <li><b>Authentification</b> ; <b>ADMIN et VIEWER refusés</b> → <span class="tag http">403</span>.</li>
+    <li><b>Limitation de débit</b> → <span class="tag http">429</span> ; <b>consentement RGPD</b> → <span class="tag http">403</span>.</li>
+    <li><b>Validation</b> du levier (les 4) et des créneaux (1 à 24).</li>
+    <li><b>Résolution du patient</b> dans le périmètre du soignant ; hors portefeuille → <span class="tag http">404</span> neutre + sonde d'énumération auditée.</li>
+    <li><b>Provenance dérivée</b> : DOCTOR → <code>doctor</code>, NURSE → <code>nurse</code>.</li>
+    <li><b>Validation clinique du jeu</b> (voir §4.2). Échec → code métier.</li>
+    <li><b>Succès</b> → <span class="tag http">201</span> <code>{ outcome:"proposal", proposalId }</code>.</li>
+  </ol>
+
+  <h3>4.2 Validation clinique du jeu (les deux voies, à la soumission et à l'acceptation)</h3>
+  <p>Les mêmes fonctions valident le jeu à la <b>création</b> et à l'<b>acceptation</b> (symétrie) :</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Levier</th><th>Contrôles</th><th>Codes d'erreur</th></tr></thead>
+    <tbody>
+      <tr><td><b>ISF / ICR</b></td><td>Jeu non vide ; durée non nulle par créneau ; valeur dans les bornes cliniques ; <b>pas de chevauchement</b> ; <b>couverture stricte 24 h</b> (aucun trou — le bolus doit toujours résoudre un créneau)</td><td><code>emptySlotSet</code>, <code>zeroDurationSlot</code>, <code>valueOutOfBounds</code>, <code>slotOverlap</code>, <code>slotGap</code></td></tr>
+      <tr><td><b>Basale POMPE</b></td><td>Idem + débit ∈ [0,05 ; 5,0] U/h <b>et délivrable</b> (multiple de 0,05) ; no‑overlap ; no‑gap 24 h</td><td>+ <code>rateNotDeliverable</code></td></tr>
+      <tr><td><b>Basale STYLO</b></td><td>Cohérence de modalité (exactement <code>{daily}</code> ou <code>{morning,evening}</code>) ; <code>kind</code> unique ; dose ≥ 0,5 U (<b>pas de plafond dur</b>) ; délivrable ½ U</td><td><code>invalidSlotSet</code>, <code>slotOverlap</code>, <code>valueOutOfBounds</code>, <code>rateNotDeliverable</code></td></tr>
+      <tr><td><b>Dose fixe</b></td><td>Dose ≥ 0,5 U ; délivrable ; clé <code>(usage, moment)</code> unique ; <b>pas</b> de contrainte horaire (dose ponctuelle). Seuils d'<i>alerte</i> non bloquants : bolus &gt; 25 U, basale &gt; 80 U</td><td><code>valueOutOfBounds</code>, <code>rateNotDeliverable</code>, <code>slotOverlap</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small">Frontière commune aux deux voies : mode « non insuliné » → <code>nonInsulinNoDose</code> (409).</p>
+
+  <h3>4.3 La voie autoritaire du médecin : l'écriture directe</h3>
+  <p>Le médecin (et lui seul) peut <b>écrire directement</b> la configuration via les routes <code>PUT</code> de remplacement
+  (<code>sensitivity-factors</code>, <code>carb-ratios</code>, <code>pump-slots</code>, <code>settings</code>). C'est la voie
+  <b>autoritaire</b> : le médecin <i>est</i> l'autorité clinique.</p>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Aspect</th><th>Écriture directe (médecin)</th><th>Proposition</th></tr></thead>
+    <tbody>
+      <tr><td>Effet</td><td><b>Écrit la config en vigueur immédiatement</b></td><td>Crée un <code>pending</code>, n'écrit rien</td></tr>
+      <tr><td>Comparaison à la base (<i>compare‑and‑swap</i>)</td><td><b>Aucune</b> — écrasement assumé</td><td>Oui, à l'acceptation (voir §5)</td></tr>
+      <tr><td>Effet sur les propositions en attente</td><td><b>Supersède</b> tous les <code>pending</code> du paramètre</td><td>Supersède par classe d'origine</td></tr>
+      <tr><td>Garde clinique patient</td><td>Aucune</td><td>Oui (côté patient)</td></tr>
+      <tr><td>Validation clinique du jeu</td><td>Oui</td><td>Oui</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small">L'écriture directe supersède au passage tout jeu périmé en attente, pour éviter qu'une proposition ancienne écrase plus tard le réglage médecin récent (raison ADR #26 « dérive de base »).</p>
+
+  <figure class="mock">
+    <div class="win-bar"><i class="u"></i><i class="m"></i><i class="g"></i><span>Back‑office soignant — Proposer / Modifier</span></div>
+    <div class="app">
+      <div class="h">Tous les créneaux — Facteur de sensibilité à l'insuline (ISF)</div>
+      <div class="sub">Modifiez les valeurs et les tranches horaires. « Valider » ne s'active que si la journée est couverte sans trou ni chevauchement.</div>
+      <div class="row-tbl">
+        <div class="r hd"><div>Début</div><div>Fin</div><div>Valeur (g/L/U)</div></div>
+        <div class="r"><div><span class="fake-input" style="width:56px;display:inline-block;padding:3px 6px">00</span></div><div><span class="fake-input" style="width:56px;display:inline-block;padding:3px 6px">08</span></div><div><span class="fake-input" style="width:64px;display:inline-block;padding:3px 6px">0.40</span></div></div>
+        <div class="r"><div><span class="fake-input" style="width:56px;display:inline-block;padding:3px 6px">08</span></div><div><span class="fake-input" style="width:56px;display:inline-block;padding:3px 6px">24</span></div><div><span class="fake-input" style="width:64px;display:inline-block;padding:3px 6px">0.50</span></div></div>
+      </div>
+      <div class="banner ok">✔ Couverture complète sur 24 h.</div>
+      <div style="display:flex;gap:10px;justify-content:space-between;margin-top:12px">
+        <span class="btn ghost">+ Ajouter un créneau</span>
+        <span><span class="btn ghost">Annuler</span> <span class="btn primary">Valider</span></span>
+      </div>
+    </div>
+    <figcaption><b>Source :</b> <code>InsulinSlotSetDialog.tsx</code> (mode <code>direct</code>, DOCTOR). En écriture directe, les heures redeviennent éditables et l'ajout/suppression de créneaux est possible (« Valider » = écriture immédiate). En mode <code>propose</code> pour un soignant, le bouton devient « Envoyer la proposition ».</figcaption>
+  </figure>
+
+  <!-- ================= 5 ================= -->
+  <h2 id="s5" class="anchor"><span class="num">5.</span> Validation par le médecin <a href="#s1" class="backtop">↑ haut</a></h2>
+
+  <p>La validation se fait dans l'<b>écran de revue de consultation</b> (<code>/patients/[id]/review</code>), un parcours
+  structuré en 6 étapes, <b>sans intelligence artificielle</b>. La lecture est accessible au médecin <b>et</b> à l'infirmière ;
+  la <b>décision</b> (accepter/rejeter) est réservée au médecin.</p>
+
+  <h3>5.1 Ce que le médecin voit</h3>
+  <ul>
+    <li><b>Le diff</b> par créneau : valeur <i>actuelle (LIVE)</i> vs valeur <i>proposée</i>, calculé côté serveur.</li>
+    <li><b>La direction de risque</b> : « plus d'insuline » (hausse basale/dose OU baisse ISF/ICR) est signalé <span class="badge-inline b-hypo">Risque hypo</span> ; le sens inverse <span class="badge-inline" style="background:var(--amber-bg);color:var(--amber);border:1px solid #fde68a">Risque hyper</span>.</li>
+    <li><b>Le motif</b> (propositions moteur seulement) : la raison, le niveau de <span class="badge-inline b-conf">confiance</span>, le <b>volume d'observations</b> (« N obs. ») et la glycémie moyenne observée.</li>
+    <li><b>Badge « Plafonné »</b> <span class="badge-inline b-cap">Plafonné</span> quand l'algorithme a ramené une valeur calculée à la borne clinique (voir <a href="#clampex">§8.6</a>).</li>
+    <li><b>Badge « Dose élevée »</b> (non bloquant) au‑dessus des seuils d'alerte.</li>
+    <li><b>Bandeau « base modifiée »</b> si la config a changé depuis la génération : le bouton <i>Accepter</i> est alors <b>désactivé</b>.</li>
+    <li><b>Bandeau « coexistence »</b> quand une proposition sœur (autre provenance) existe sur le même paramètre.</li>
+    <li><b>Les orientations ouvertes</b> (flags cliniques, ex. suspicion de Somogyi) sont affichées <b>avant</b> les propositions.</li>
+  </ul>
+
+  <div class="callout note"><div class="ct">Ce que le patient ne voit pas</div>
+  <p style="margin:.2rem 0 0">Le patient (VIEWER) ne voit <b>que ses propres demandes</b> (<code>source="patient"</code>), jamais une dose non validée proposée par un soignant ou l'algorithme — car voir une dose non encore validée l'exposerait à une auto‑injection prématurée (ADR #13). Cette restriction est <b>imposée serveur</b> (jamais depuis la requête). Les métadonnées internes (base de comparaison, motif détaillé) ne lui sont jamais exposées.</p>
+  </div>
+
+  <figure class="mock">
+    <div class="win-bar"><i class="u"></i><i class="m"></i><i class="g"></i><span>Back‑office médecin — Revue › Décisions médicales</span></div>
+    <div class="app">
+      <div class="h">Propositions d'ajustement</div>
+      <div class="sub">Propositions déterministes produites côté serveur — jamais appliquées automatiquement.</div>
+      <div class="banner warn"><b>À revoir en consultation :</b> Hypoglycémie nocturne à revoir (basale)</div>
+      <div style="border:1px solid var(--line);border-radius:10px;padding:12px;margin-top:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <b>Ratio insuline/glucides (ICR)</b>
+          <span class="badge-inline b-src">Algorithme</span>
+        </div>
+        <div class="row-tbl" style="margin-top:8px">
+          <div class="r hd" style="grid-template-columns:1fr 1fr 1fr 1.4fr"><div>Heure</div><div>Actuel</div><div>Proposé</div><div>Motif</div></div>
+          <div class="r chg" style="grid-template-columns:1fr 1fr 1fr 1.4fr">
+            <div>06h–12h</div><div>11.0 g/U</div><div>△ 9.5 g/U</div>
+            <div style="font-size:.8rem">Ratio excessif (à assouplir)<br><span class="badge-inline b-conf">Élevée</span> <span class="small">8 obs. · moy. 2,1 g/L</span> <span class="badge-inline b-hypo">Risque hypo</span></div>
+          </div>
+          <div class="r" style="grid-template-columns:1fr 1fr 1fr 1.4fr"><div>12h–22h</div><div>11.0 g/U</div><div>11.0 g/U</div><div class="small">—</div></div>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:12px">
+          <span class="btn danger">Rejeter</span><span class="btn primary">Accepter</span>
+        </div>
+      </div>
+    </div>
+    <figcaption><b>Source :</b> <code>ReviewClient.tsx</code> (stepper) + <code>GroupedProposalReview.tsx</code> (tableau de diff, colonnes Heure / Actuel / Proposé / Motif). La colonne « Motif » n'apparaît que pour les propositions <b>moteur</b> et sur les créneaux <b>modifiés</b>.</figcaption>
+  </figure>
+
+  <h3 id="cas">5.2 L'acceptation : garde anti‑dérive de base (compare‑and‑swap)</h3>
+  <p>Accepter une proposition l'applique à la configuration — <b>dans une seule transaction</b>. Avant d'écrire, le système
+  vérifie que la <b>base n'a pas bougé</b> depuis la génération de la proposition (<i>compare‑and‑swap</i>, CAS). C'est le
+  garde‑fou central contre l'écrasement d'un ajustement médecin concurrent.</p>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Situation à l'acceptation</th><th>Résultat</th><th class="num">HTTP</th></tr></thead>
+    <tbody>
+      <tr><td>La base LIVE == la base capturée à la génération (par clé de créneau)</td><td>✅ Appliqué, proposition → <code>accepted</code></td><td class="num">200</td></tr>
+      <tr><td>La base a <b>dérivé</b> (valeur/borne/structure) depuis la génération</td><td>❌ <code>baselineMoved</code> — rollback, reste <code>pending</code></td><td class="num">409</td></tr>
+      <tr><td>Aucune base capturée (proposition <i>legacy</i>)</td><td>❌ <code>baselineMissing</code> — rollback</td><td class="num">409</td></tr>
+      <tr><td>Créneau cible supprimé/déplacé au moment d'écrire</td><td>❌ <code>…SlotNotFound</code> — rollback</td><td class="num">409</td></tr>
+      <tr><td>Proposition déjà rejetée/acceptée/remplacée en concurrence</td><td>❌ <code>slotSetProposalNotFound</code> — rollback</td><td class="num">404</td></tr>
+      <tr><td>Mode devenu « non insuliné » entre‑temps</td><td>❌ <code>nonInsulinNoDose</code></td><td class="num">409</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout pass"><div class="ct">✔ Jamais d'« accepté + appliqué » fantôme</div>
+  <p style="margin:.2rem 0 0">Tout échec (bornes, couverture, CAS, verrou) <b>annule toute la transaction</b> : la proposition <b>reste <code>pending</code></b> et la configuration n'est pas modifiée. Il n'existe pas d'état où une proposition serait marquée « acceptée » sans que la config ait réellement été écrite.</p>
+  </div>
+
+  <h3>5.3 Rejet &amp; orientations cliniques</h3>
+  <p>Le <b>rejet</b> fait passer la proposition à <code>rejected</code> sans toucher la configuration. Le patient est notifié
+  du résultat (accepté / rejeté).</p>
+  <p>Les <b>orientations cliniques</b> (<code>ClinicalReviewFlag</code>) sont un objet <b>distinct</b> qui ne porte <b>jamais de
+  posologie</b> — rôle purement d'aiguillage vers la consultation (frontière dispositif médical). Elles sont idempotentes et
+  surfacées <b>avant</b> toute décision de baisse basale (« voir le contexte hypoglycémique avant d'accepter une baisse »).
+  Exemples : suspicion de <b>Somogyi</b> (hypoglycémie nocturne + glycémie à jeun élevée), forte variabilité, HbA1c à
+  actualiser, temps‑dans‑la‑cible sous l'objectif.</p>
+
+  <!-- ================= 6 ================= -->
+  <h2 id="s6" class="anchor"><span class="num">6.</span> Accusé &amp; actualisation patient <a href="#s1" class="backtop">↑ haut</a></h2>
+  <p>Après validation médecin, deux mécanismes de suivi côté patient / soignant :</p>
+  <div class="grid2">
+    <div class="callout note"><div class="ct">Accusé patient (1 accusé = jeu entier)</div>
+      <p style="margin:.2rem 0 0"><b>Lecture</b> (<code>markRead</code>) puis <b>réponse</b> (<code>respond</code> : accepté/rejeté + commentaire libre <b>chiffré AES‑256‑GCM</b>, max 500 caractères). Relation 1:1 avec la proposition groupée (décision D3). Frontière de provenance : le patient ne peut acquitter que <b>ses propres</b> demandes (404 non‑énumérant sinon).</p>
+    </div>
+    <div class="callout note"><div class="ct">Actualisation (application réelle)</div>
+      <p style="margin:.2rem 0 0">Un soignant enregistre que l'ajustement a bien <b>pris effet dans le monde réel</b> (<code>record</code> : <code>device-sync</code> / <code>manual-ps</code> / <code>patient-confirmed</code>). Garde <b>anti‑écrasement</b> : une actualisation existante d'une source différente est refusée (<code>alreadyActualized</code>) ; ré‑enregistrer la même source est idempotent. Réservé aux soignants (NURSE+) ayant accès au patient.</p>
+    </div>
+  </div>
+
+  <!-- ================= 7 ================= -->
+  <h2 id="s7" class="anchor"><span class="num">7.</span> L'algorithme : états &amp; analyseurs <a href="#s1" class="backtop">↑ haut</a></h2>
+
+  <p>L'algorithme (« moteur ») s'exécute périodiquement sur le portefeuille. Pour chaque patient, il <b>dérive le mode de
+  traitement</b>, analyse les données glycémiques par levier, et émet <b>au plus une proposition groupée par levier</b>.
+  Rappel : il ne prescrit rien — tout reste <code>pending</code>.</p>
+
+  <h3>7.1 La machine à états : le mode de traitement</h3>
+  <p>Le mode est <b>dérivé à la lecture</b> (jamais une colonne figée), dans cet ordre exact :</p>
+
+  <figure class="chartfig">
+    <svg class="glyco" viewBox="0 0 900 250" role="img" aria-label="Arbre de décision du mode de traitement">
+      <g font-family="system-ui" font-size="13">
+        <rect x="20" y="100" width="150" height="52" rx="10" fill="#f0fdfa" stroke="#0D9488" stroke-width="2"/>
+        <text x="95" y="122" text-anchor="middle" font-weight="700" fill="#0f766e">Config patient</text>
+        <text x="95" y="140" text-anchor="middle" font-size="11" fill="#6B7280">ISF/ICR, insuline, basale</text>
+
+        <rect x="235" y="20" width="185" height="48" rx="10" fill="#ecfdf5" stroke="#10B981" stroke-width="2"/>
+        <text x="327" y="40" text-anchor="middle" font-weight="700" fill="#047857">basalBolus</text>
+        <text x="327" y="57" text-anchor="middle" font-size="11" fill="#6B7280">ISF + ICR pleins → ICR/basal/ISF</text>
+
+        <rect x="235" y="100" width="185" height="48" rx="10" fill="#fffbeb" stroke="#F59E0B" stroke-width="2"/>
+        <text x="327" y="120" text-anchor="middle" font-weight="700" fill="#b45309">fixedDose</text>
+        <text x="327" y="137" text-anchor="middle" font-size="11" fill="#6B7280">doses simples par moment</text>
+
+        <rect x="235" y="180" width="185" height="48" rx="10" fill="#f3f4f6" stroke="#9ca3af" stroke-width="2"/>
+        <text x="327" y="200" text-anchor="middle" font-weight="700" fill="#4b5563">nonInsulin</text>
+        <text x="327" y="217" text-anchor="middle" font-size="11" fill="#6B7280">orientations seulement</text>
+
+        <rect x="500" y="150" width="380" height="80" rx="10" fill="#fef2f2" stroke="#EF4444" stroke-width="2"/>
+        <text x="516" y="174" font-weight="700" fill="#b91c1c">Garde fail‑closed (frontière MDR)</text>
+        <text x="516" y="196" font-size="12" fill="#4b5563">Un patient DT1 — ou ayant DÉJÀ reçu de l'insuline —</text>
+        <text x="516" y="213" font-size="12" fill="#4b5563">n'est <tspan font-weight="700">JAMAIS</tspan> classé « non insuliné » → au minimum fixedDose.</text>
+      </g>
+      <g stroke="#6B7280" stroke-width="2" fill="none" marker-end="url(#arw)">
+        <path d="M170,116 L231,44"/><path d="M170,124 L231,124"/><path d="M170,132 L231,200"/>
+      </g>
+    </svg>
+    <figcaption>Dérivation du mode (<code>deriveTreatmentMode</code>, <code>treatment-mode.service.ts:70‑109</code>). Le fail‑closed DT1/« a déjà eu de l'insuline » est une <span class="tag int">décision interne</span> de sécurité : ne jamais retirer l'insuline à qui en a besoin.</figcaption>
+  </figure>
+
+  <h3>7.2 Le squelette commun d'un analyseur</h3>
+  <p>Chaque levier partage la même ossature de décision. Les <b>portes de sûreté</b> (minimum de preuve, zone morte, garde
+  hypoglycémie) sont identiques dans l'esprit :</p>
+  <ol class="steps">
+    <li><b>Minimum de preuve</b> : <code>&lt; 3</code> événements exploitables (repas / relevés / nuits) → <b>aucune proposition</b>. <span class="tag int">Décision interne</span> (le bruit statistique sous 3 mesures).</li>
+    <li><b>Écart à la cible</b> : <code>errorPercent = ((moyenne − cible) / cible) × ±100</code> (le signe dépend du levier).</li>
+    <li><b>Bornage &amp; zone morte</b> : écart plafonné à <b>±20 %</b> (cap moteur), puis <b>zone morte 2 %</b> (sous 2 % → non actionnable, aucune proposition).</li>
+    <li><b>Snapping délivrable</b> : la valeur proposée est arrondie au pas réel du dispositif (0,05 U/h pompe, 0,5 U dose fixe, 1 U stylo). Si le pas devient nul → aucune proposition.</li>
+    <li><b>Garde hypoglycémie</b> : si le geste va « vers plus d'insuline » ET qu'une hypoglycémie récente est détectée → <b>bloqué</b> (voir §7.4).</li>
+    <li><b>Direction</b> : le sens (<code>reason</code>) doit être cohérent avec le signe de la variation, sinon le créneau est abandonné.</li>
+  </ol>
+
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Levier</th><th>Signal</th><th>Cible</th><th>Sens « post au‑dessus de la cible »</th></tr></thead>
+    <tbody>
+      <tr><td><b>ICR</b></td><td>Glycémie post‑prandiale 2 h (PPG)</td><td>Bande [1,0 ; plafond ~1,8 g/L adulte]</td><td>ICR ↓ (plus d'insuline/gramme) — <code>icrTooHigh</code></td></tr>
+      <tr><td><b>ISF</b></td><td>Glycémie après correction (relevé « settled » ~5 h)</td><td>Cible de correction individualisée</td><td>ISF ↓ (correction plus forte) — <code>isfTooHigh</code></td></tr>
+      <tr><td><b>Basale POMPE</b></td><td>Glycémie à jeun (créneau actif à 05:00)</td><td>Cible à jeun (~1,0 g/L)</td><td>Basale ↑ — <code>basalTooLow</code></td></tr>
+      <tr><td><b>Basale STYLO</b></td><td>Glycémie à jeun (fenêtre 7 j)</td><td>Cible ± zone morte asymétrique</td><td>Dose ↑ — <code>basalTooLow</code></td></tr>
+      <tr><td><b>Dose fixe</b></td><td>Glycémie du moment (creux pré‑dose)</td><td>Cible du moment</td><td>Dose ↑ — <code>fixedDoseTooLow</code></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout science"><div class="ct">📚 Fondement clinique des cibles &amp; de la titration « treat‑to‑target »</div>
+  <p style="margin:.2rem 0 0">La logique « comparer la glycémie moyenne à une cible et titrer par petits pas » est le principe <b>treat‑to‑target</b> validé pour la basale (Riddle <i>et al.</i>, Treat‑to‑Target Trial <sup class="ref">R7</sup>) et cadré par les recommandations ADA <sup class="ref">R1</sup>. La cible à jeun ~80–130 mg/dL et le temps‑dans‑la‑cible 70–180 mg/dL proviennent des consensus ADA <sup class="ref">R1</sup> et International Time‑in‑Range (Battelino <i>et al.</i> <sup class="ref">R2</sup>). L'estimation ISF/ICR par « règles » (1800 / 500) est décrite par Walsh &amp; Roberts <sup class="ref">R5</sup> et Davidson <i>et al.</i> <sup class="ref">R6</sup>. <b>Les valeurs de pas, de zone morte et de fenêtres</b> sont des <span class="tag int">décisions internes</span> Diabeo.</p>
+  </div>
+
+  <h3>7.3 Le stylo (MDI) : titration à pas fixe &amp; zone morte asymétrique</h3>
+  <p>La basale stylo n'a pas de créneau horaire : c'est une dose lente. Sa titration utilise une <b>zone morte
+  asymétrique</b> autour de la cible à jeun T :</p>
+  <ul>
+    <li>Si moyenne à jeun <code>&gt; T + 0,30 g/L</code> → <b>hausse</b> (pas de <code>max(+2 U, +10 %)</code>).</li>
+    <li>Si moyenne à jeun <code>&lt; T − 0,20 g/L</code> → <b>baisse</b> (sens sûr).</li>
+    <li>Entre les deux → <b>HOLD</b> (on ne touche à rien).</li>
+  </ul>
+  <p>La bande haute (0,30) est <b>plus large</b> que la bande basse (0,20) : on est plus prudent pour <b>monter</b>
+  l'insuline que pour la <b>baisser</b>. La molécule module aussi le délai anti‑ré‑ajustement (« cooldown ») :
+  <b>72 h</b> pour une basale classique (glargine U100, détémir), <b>96 h</b> pour une ultra‑longue (dégludec, U300)
+  dont l'effet met plus de jours à s'établir.</p>
+  <div class="callout science"><div class="ct">📚 Zone morte &amp; cooldown molécule‑dépendant</div>
+  <p style="margin:.2rem 0 0">« Une hausse de +2 U baisse la glycémie à jeun de ~20–40 mg/dL » et l'anti‑overshoot renvoient au cadre treat‑to‑target (Riddle 2003 <sup class="ref">R7</sup>) ; à T=1,00 g/L la zone HOLD [0,80 ; 1,30] recoupe la cible à jeun ADA 80–130 mg/dL <sup class="ref">R1</sup>. Les cooldowns 72 h / 96 h reflètent la pharmacocinétique (temps d'atteinte du steady‑state ~3–5 demi‑vies). <b>L'asymétrie 0,30/0,20 et le pas exact</b> restent des <span class="tag int">décisions internes</span> validées en interne.</p>
+  </div>
+
+  <h3 id="hypoguard">7.4 La garde hypoglycémie : le levier de sécurité prioritaire</h3>
+  <p>Aucune proposition « vers plus d'insuline » ne peut passer si une hypoglycémie récente est détectée dans la fenêtre.
+  Deux seuils (échelle ADA), en g/L (mg/dL) :</p>
+  <div class="grid2">
+    <div class="callout block"><div class="ct">Hypoglycémie de niveau 2 (sévère)</div>
+    <p style="margin:.2rem 0 0"><b>&lt; 0,54 g/L (54 mg/dL)</b> : <b>un seul</b> relevé suffit à bloquer une hausse d'insuline / à lever une orientation.</p></div>
+    <div class="callout block"><div class="ct">Hypoglycémie de niveau 1</div>
+    <p style="margin:.2rem 0 0"><b>&lt; 0,70 g/L (70 mg/dL)</b> : bloque seulement si <b>récurrente</b> (≥ 2 relevés) — évite qu'un artefact isolé fige la titration.</p></div>
+  </div>
+  <div class="callout science"><div class="ct">📚 Seuils d'hypoglycémie</div>
+  <p style="margin:.2rem 0 0">Les seuils 70 mg/dL (niveau 1) et 54 mg/dL (niveau 2) sont ceux de l'ADA et de l'International Hypoglycaemia Study Group <sup class="ref">R1,R9</sup>. <b>Le compte « 2 relevés » pour la récurrence</b> est une <span class="tag int">décision interne</span> (garde anti‑artefact).</p>
+  </div>
+
+  <h3>7.5 La dé‑escalade sur hypoglycémies récurrentes</h3>
+  <p>Au‑delà du simple blocage, si des <b>hypoglycémies post‑prandiales récurrentes</b> sont détectées (≥ 2 nadirs &lt; 0,70 g/L
+  sur ≥ 3), l'algorithme propose <b>activement de réduire l'insuline</b> d'un <b>pas fixe de 10 %</b> (par ex. monter l'ICR de
+  +10 % ≈ −9 % d'insuline repas). Un « cooldown » de <b>72 h</b> empêche l'empilement de dé‑escalades (l'effet d'un changement
+  se juge sur ≥ 3 jours). Une suspicion de <b>Somogyi</b> (signal haut + hypo récurrente) ne déclenche <b>jamais</b> une baisse
+  automatique : elle lève une <b>orientation</b> pour le médecin.</p>
+  <div class="callout science"><div class="ct">📚 Pas de dé‑escalade fixe</div>
+  <p style="margin:.2rem 0 0">Un pas de titration fixe d'environ 10 % est cohérent avec les approches d'ajustement par comptage de glucides (DAFNE <sup class="ref">R12</sup>) et les recommandations générales de titration <sup class="ref">R1</sup>. <b>Le choix « fixe à 10 % » et le seuil de récurrence</b> sont des <span class="tag int">décisions internes</span>.</p>
+  </div>
+
+  <h3>7.6 Le plafonnement clinique (décision D1)</h3>
+  <p>Quand la valeur <b>calculée</b> dépasse une borne clinique du levier, l'algorithme ne la rejette pas et ne la masque pas :
+  il la <b>plafonne à la borne</b> et le <b>signale</b> dans le motif (« Plafonné, calcul = X »). <b>C'est le médecin qui
+  tranche</b> — jamais auto‑appliqué. Un garde‑fou complémentaire : on ne titre <b>jamais depuis une base elle‑même
+  hors‑borne</b> (donnée aberrante) — le créneau est alors abandonné (fail‑closed).</p>
+
+  <!-- ================= 8 ================= -->
+  <h2 id="s8" class="anchor"><span class="num">8.</span> Cas passants &amp; bloquants — exemples <a href="#s1" class="backtop">↑ haut</a></h2>
+  <p class="small">Les graphiques ci‑dessous utilisent l'échelle g/L (avec l'équivalent mg/dL). Bandes :
+    <span class="legend" style="display:inline-flex"><span><i style="background:#fee2e2"></i>hypo sévère &lt;0,54</span><span><i style="background:#fef3c7"></i>hypo &lt;0,70</span><span><i style="background:#dcfce7"></i>cible</span><span><i style="background:#fef3c7"></i>haut</span></span></p>
+
+  <!-- reusable svg chart 1: ICR increase -->
+  <figure class="chartfig">
+    <svg class="glyco" viewBox="0 0 640 260" role="img" aria-label="Glycémies post-prandiales répétées au-dessus de la cible">
+      <!-- bands: y from 0.4(bottom) to 2.4(top). map g/L to y: y = 230 - (v-0.4)*(200/2.0) -->
+      <g>
+        <rect x="60" y="30" width="560" height="200" fill="#fff"/>
+        <!-- high >1.8 -->
+        <rect x="60" y="30" width="560" height="30" fill="#fef3c7"/>
+        <!-- target 0.7-1.8 -->
+        <rect x="60" y="60" width="560" height="110" fill="#dcfce7"/>
+        <!-- hypo 0.54-0.7 -->
+        <rect x="60" y="170" width="560" height="16" fill="#fef3c7"/>
+        <!-- severe <0.54 -->
+        <rect x="60" y="186" width="560" height="44" fill="#fee2e2"/>
+      </g>
+      <g font-family="system-ui" font-size="11" fill="#6B7280">
+        <text x="54" y="63" text-anchor="end">1,8</text>
+        <text x="54" y="173" text-anchor="end">0,70</text>
+        <text x="54" y="189" text-anchor="end">0,54</text>
+        <text x="30" y="130" text-anchor="middle" transform="rotate(-90 30 130)">Glycémie (g/L)</text>
+      </g>
+      <!-- ceiling line 1.8 -->
+      <line x1="60" y1="60" x2="620" y2="60" stroke="#F59E0B" stroke-dasharray="4 4" stroke-width="1.5"/>
+      <!-- PPG points around 2.1 -->
+      <g fill="#EF4444">
+        <circle cx="130" cy="43" r="5"/><circle cx="250" cy="49" r="5"/><circle cx="370" cy="40" r="5"/><circle cx="490" cy="46" r="5"/><circle cx="580" cy="44" r="5"/>
+      </g>
+      <polyline points="130,43 250,49 370,40 490,46 580,44" fill="none" stroke="#ef4444" stroke-width="2" opacity=".55"/>
+      <g font-family="system-ui" font-size="11" fill="#4b5563" text-anchor="middle">
+        <text x="130" y="250">Repas 1</text><text x="250" y="250">Repas 2</text><text x="370" y="250">Repas 3</text><text x="490" y="250">Repas 4</text><text x="580" y="250">Repas 5</text>
+      </g>
+    </svg>
+    <figcaption><b>Cas 1 — ICR, cas passant.</b> 5 repas dont la PPG 2 h dépasse systématiquement le plafond (~2,1 g/L vs 1,8).</figcaption>
+  </figure>
+  <div class="callout pass"><div class="ct">✔ Proposition émise</div>
+  <p style="margin:.2rem 0 0">Moyenne PPG ≈ 2,1 g/L, plafond 1,8 → <code>errorPercent = ((2,1−1,8)/1,8)×−100 ≈ −16,7 %</code> (dans ±20 %, hors zone morte). Sens : PPG au‑dessus de la cible → <b>bolus repas trop faible → ICR trop haut → baisse</b> (<code>icrTooHigh</code>, plus d'insuline/gramme). Avec un ICR courant de 11 g/U → proposé ≈ <b>9,5 g/U</b>. <b>Direction de risque : hypo</b> (surveillance médecin). Statut : <code>pending</code>.</p>
+  </div>
+
+  <!-- chart 2: hypo de-escalation -->
+  <figure class="chartfig">
+    <svg class="glyco" viewBox="0 0 640 260" role="img" aria-label="Nadirs post-prandiaux récurrents sous 0,70">
+      <g>
+        <rect x="60" y="30" width="560" height="30" fill="#fef3c7"/>
+        <rect x="60" y="60" width="560" height="110" fill="#dcfce7"/>
+        <rect x="60" y="170" width="560" height="16" fill="#fef3c7"/>
+        <rect x="60" y="186" width="560" height="44" fill="#fee2e2"/>
+      </g>
+      <g font-family="system-ui" font-size="11" fill="#6B7280">
+        <text x="54" y="173" text-anchor="end">0,70</text><text x="54" y="189" text-anchor="end">0,54</text>
+      </g>
+      <line x1="60" y1="170" x2="620" y2="170" stroke="#EF4444" stroke-dasharray="4 4" stroke-width="1.5"/>
+      <!-- nadirs below 0.7 -->
+      <g fill="#b91c1c">
+        <circle cx="150" cy="176" r="5"/><circle cx="320" cy="182" r="5"/><circle cx="500" cy="178" r="5"/>
+      </g>
+      <g font-family="system-ui" font-size="11" fill="#4b5563" text-anchor="middle">
+        <text x="150" y="250">Nadir repas J1 · 0,66</text><text x="320" y="250">Nadir J3 · 0,60</text><text x="500" y="250">Nadir J5 · 0,64</text>
+      </g>
+    </svg>
+    <figcaption><b>Cas 2 — Dé‑escalade hypo, cas passant (baisse d'insuline).</b> Nadirs post‑repas récurrents sous 0,70 g/L.</figcaption>
+  </figure>
+  <div class="callout pass"><div class="ct">✔ Proposition de sécurité émise (moins d'insuline)</div>
+  <p style="margin:.2rem 0 0">≥ 2 nadirs &lt; 0,70 g/L sur ≥ 3 repas → dé‑escalade active : <b>ICR +10 %</b> (≈ −9 % d'insuline repas), même si la moyenne PPG est « dans la bande » (le signal de sécurité prime). Cooldown 72 h ensuite. Aucune baisse n'est appliquée sans le médecin.</p>
+  </div>
+
+  <!-- chart 3: basal increase with nadir coverage -->
+  <figure class="chartfig">
+    <svg class="glyco" viewBox="0 0 640 260" role="img" aria-label="Glycémies à jeun élevées avec nadirs nocturnes normaux">
+      <g>
+        <rect x="60" y="30" width="560" height="30" fill="#fef3c7"/>
+        <rect x="60" y="60" width="560" height="110" fill="#dcfce7"/>
+        <rect x="60" y="170" width="560" height="16" fill="#fef3c7"/>
+        <rect x="60" y="186" width="560" height="44" fill="#fee2e2"/>
+      </g>
+      <g font-family="system-ui" font-size="11" fill="#6B7280"><text x="54" y="90" text-anchor="end">1,50</text><text x="54" y="130" text-anchor="end">1,10</text><text x="54" y="173" text-anchor="end">0,70</text></g>
+      <line x1="60" y1="130" x2="620" y2="130" stroke="#10B981" stroke-dasharray="4 4" stroke-width="1.5"/>
+      <text x="616" y="126" text-anchor="end" font-size="11" fill="#047857">cible à jeun 1,0</text>
+      <!-- fasting points ~1.5 -->
+      <g fill="#b45309"><circle cx="150" cy="90" r="5"/><circle cx="320" cy="86" r="5"/><circle cx="500" cy="92" r="5"/></g>
+      <!-- nocturnal nadirs ~0.9 (safe) -->
+      <g fill="#047857"><circle cx="150" cy="150" r="4"/><circle cx="320" cy="146" r="4"/><circle cx="500" cy="152" r="4"/></g>
+      <g font-family="system-ui" font-size="11" fill="#4b5563" text-anchor="middle">
+        <text x="150" y="250">Nuit 1</text><text x="320" y="250">Nuit 2</text><text x="500" y="250">Nuit 3</text>
+      </g>
+      <text x="335" y="46" font-size="11" fill="#b45309">● à jeun ≈ 1,5 (élevé)</text>
+      <text x="335" y="205" font-size="11" fill="#047857">● nadir nocturne ≈ 0,9 (sûr, ≥ 3 nuits couvertes)</text>
+    </svg>
+    <figcaption><b>Cas 3 — Basale, cas passant (hausse).</b> Glycémie à jeun élevée + nadirs nocturnes normaux sur ≥ 3 nuits (couverture Somogyi).</figcaption>
+  </figure>
+  <div class="callout pass"><div class="ct">✔ Hausse basale proposée</div>
+  <p style="margin:.2rem 0 0">À jeun ≈ 1,5 g/L &gt; cible 1,0 → <code>basalTooLow</code> (hausse). La hausse n'est autorisée que parce qu'il y a <b>couverture nocturne</b> (≥ 3 nuits avec nadir mesuré) — sinon une hypo nocturne masquée pourrait exister. Valeur snappée au pas pompe 0,05 U/h. <code>pending</code>.</p>
+  </div>
+
+  <!-- chart 4: Somogyi block -->
+  <figure class="chartfig">
+    <svg class="glyco" viewBox="0 0 640 260" role="img" aria-label="Somogyi : hypo nocturne suivie de glycémie à jeun élevée">
+      <g>
+        <rect x="60" y="30" width="560" height="30" fill="#fef3c7"/>
+        <rect x="60" y="60" width="560" height="110" fill="#dcfce7"/>
+        <rect x="60" y="170" width="560" height="16" fill="#fef3c7"/>
+        <rect x="60" y="186" width="560" height="44" fill="#fee2e2"/>
+      </g>
+      <g font-family="system-ui" font-size="11" fill="#6B7280"><text x="54" y="90" text-anchor="end">1,50</text><text x="54" y="173" text-anchor="end">0,70</text><text x="54" y="189" text-anchor="end">0,54</text></g>
+      <!-- curve dipping at 3am then rising at fasting -->
+      <polyline points="90,120 200,140 300,200 400,150 520,88 600,84" fill="none" stroke="#7c3aed" stroke-width="2.5"/>
+      <g fill="#7c3aed"><circle cx="300" cy="200" r="5"/><circle cx="600" cy="84" r="5"/></g>
+      <text x="300" y="222" font-size="11" fill="#b91c1c" text-anchor="middle">3h · nadir 0,50 (sévère)</text>
+      <text x="588" y="76" font-size="11" fill="#b45309" text-anchor="end">7h · à jeun 1,5 (rebond)</text>
+    </svg>
+    <figcaption><b>Cas 4 — Somogyi, cas BLOQUANT.</b> Hypoglycémie nocturne sévère suivie d'un rebond hyperglycémique à jeun.</figcaption>
+  </figure>
+  <div class="callout block"><div class="ct">✖ Pas de baisse — ni de hausse — automatique : une orientation</div>
+  <p style="margin:.2rem 0 0">La glycémie à jeun élevée pourrait naïvement suggérer une <b>hausse</b> de basale — ce serait dangereux car l'origine est une <b>hypo nocturne</b> (rebond). Le code détecte « signal haut + hypo récurrente » et lève l'orientation <b>Somogyi</b> (<code>nocturnalHypoHighFasting</code>) au lieu d'émettre une dose. Le médecin la voit <b>avant</b> toute décision de baisse.</p>
+  </div>
+
+  <!-- chart 5: severe hypo blocks increase -->
+  <figure class="chartfig">
+    <svg class="glyco" viewBox="0 0 640 220" role="img" aria-label="Une hypoglycémie sévère bloque une hausse d'insuline">
+      <g>
+        <rect x="60" y="20" width="560" height="24" fill="#fef3c7"/>
+        <rect x="60" y="44" width="560" height="96" fill="#dcfce7"/>
+        <rect x="60" y="140" width="560" height="14" fill="#fef3c7"/>
+        <rect x="60" y="154" width="560" height="36" fill="#fee2e2"/>
+      </g>
+      <g font-family="system-ui" font-size="11" fill="#6B7280"><text x="54" y="144" text-anchor="end">0,70</text><text x="54" y="157" text-anchor="end">0,54</text></g>
+      <g fill="#b45309"><circle cx="160" cy="34" r="5"/><circle cx="300" cy="30" r="5"/></g>
+      <g fill="#b91c1c"><circle cx="470" cy="172" r="6"/></g>
+      <text x="470" y="196" font-size="11" fill="#b91c1c" text-anchor="middle">1 relevé 0,48 (sévère)</text>
+      <text x="230" y="24" font-size="11" fill="#b45309" text-anchor="middle">glycémies hautes (suggéreraient +insuline)</text>
+    </svg>
+    <figcaption><b>Cas 5 — Garde hypo, cas BLOQUANT.</b> Malgré des glycémies élevées, un <b>seul</b> relevé &lt; 0,54 g/L bloque toute proposition « vers plus d'insuline ».</figcaption>
+  </figure>
+  <div class="callout block"><div class="ct">✖ Hausse bloquée par la garde de sécurité</div>
+  <p style="margin:.2rem 0 0">La garde hypoglycémie est prioritaire : une hypoglycémie <b>sévère</b> isolée suffit à <b>bloquer</b> une hausse d'insuline. Selon le contexte, l'événement isolé est <b>surfacé</b> comme orientation (« jamais silencieux ») plutôt que traduit en dose.</p>
+  </div>
+
+  <!-- chart 6: clamp D1 -->
+  <figure class="chartfig" id="clampex">
+    <svg class="glyco" viewBox="0 0 640 170" role="img" aria-label="Plafonnement d'une valeur calculée à la borne clinique">
+      <line x1="60" y1="120" x2="600" y2="120" stroke="#d1d5db" stroke-width="2"/>
+      <!-- scale ICR 28..36 -->
+      <g font-family="system-ui" font-size="11" fill="#6B7280" text-anchor="middle">
+        <text x="120" y="140">28</text><text x="300" y="140">30 (borne max)</text><text x="520" y="140">34 (calcul)</text>
+      </g>
+      <line x1="300" y1="60" x2="300" y2="130" stroke="#EF4444" stroke-width="2"/>
+      <text x="300" y="52" text-anchor="middle" font-size="11" fill="#b91c1c">borne clinique ICR_MAX = 30</text>
+      <circle cx="520" cy="120" r="6" fill="#9ca3af"/>
+      <text x="520" y="104" text-anchor="middle" font-size="11" fill="#6B7280">valeur calculée 34</text>
+      <circle cx="300" cy="120" r="7" fill="#0D9488"/>
+      <path d="M505,120 C440,90 360,90 315,118" fill="none" stroke="#0D9488" stroke-width="2" marker-end="url(#arw)"/>
+      <text x="300" y="162" text-anchor="middle" font-size="11" fill="#0f766e">proposé = 30 · badge « Plafonné (calcul 34) »</text>
+    </svg>
+    <figcaption><b>Cas 6 — Plafonnement D1.</b> Une valeur calculée hors borne est ramenée à la borne, jamais rejetée en silence ; le médecin voit le calcul brut.</figcaption>
+  </figure>
+
+  <h3>8.7 Récapitulatif : quand un créneau est abandonné</h3>
+  <div class="tbl-wrap">
+  <table>
+    <thead><tr><th>Situation</th><th>Effet</th></tr></thead>
+    <tbody>
+      <tr><td>Créneau introuvable dans la config actuelle (supprimé/déplacé)</td><td>Abandonné</td></tr>
+      <tr><td>Fenêtre horaire restructurée (fin d'heure différente, ISF/ICR)</td><td>Abandonné</td></tr>
+      <tr><td>La base a dérivé depuis l'analyse (valeur ≠ base analysée)</td><td>Abandonné (anti‑magnitude périmée)</td></tr>
+      <tr><td>Base actuelle elle‑même hors borne clinique (donnée aberrante)</td><td>Abandonné (fail‑closed, jamais titrer sur base invalide)</td></tr>
+      <tr><td>Variation nulle après snapping (déjà à la borne, ou &lt; 1 pas)</td><td>Aucune proposition (no‑op)</td></tr>
+      <tr><td>Incohérence sens ↔ motif (défaut d'analyseur)</td><td>Abandonné + journalisé</td></tr>
+      <tr><td>&lt; 3 événements exploitables</td><td>Aucune proposition</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="small">Si aucun créneau du levier n'est retenu, rien n'est émis pour ce levier (no‑op global).</p>
+
+  <!-- ================= 9 ================= -->
+  <h2 id="s9" class="anchor"><span class="num">9.</span> Catalogue des constantes <a href="#s1" class="backtop">↑ haut</a></h2>
+  <p>Chaque constante est reportée avec sa valeur exacte, sa source (<code>clinical-bounds.ts</code> sauf mention),
+  et sa classe : <span class="tag sci">Principe</span> = adossée à une référence clinique publiée ;
+  <span class="tag int">Interne</span> = calibration Diabeo (validation médicale interne) ;
+  <span class="tag dev">Technique</span> = contrainte logicielle/dispositif.</p>
+
+  <h3>9.1 Bornes de dose &amp; délivrabilité</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Constante</th><th class="num">Valeur</th><th>Sens / justification (code)</th><th>Classe</th></tr></thead>
+    <tbody>
+      <tr><td><code>ISF_GL_MIN / MAX</code></td><td class="num">0,10 / 1,00 g/L·U</td><td>Bornes ISF — « élargi pour DT2 insulino‑résistant »</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>ISF_MGDL_MIN / MAX</code></td><td class="num">10 / 100 mg/dL·U</td><td>« 1800 Rule range »</td><td><span class="tag sci">Principe</span><sup class="ref">R5,R6</sup></td></tr>
+      <tr><td><code>ICR_MIN / MAX</code></td><td class="num">3,0 / 30,0 g/U</td><td>« élargi pédiatrie + résistant »</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>BASAL_MIN / MAX</code></td><td class="num">0,05 / 5,0 U/h</td><td>« 10 U/h = 240 U/j, dangereux »</td><td><span class="tag sci">Principe</span></td></tr>
+      <tr><td><code>PUMP_BASAL_INCREMENT</code></td><td class="num">0,05 U/h</td><td>Incrément délivrable de la pompe</td><td><span class="tag dev">Technique</span></td></tr>
+      <tr><td><code>MAX_SINGLE_BOLUS</code></td><td class="num">25 U</td><td>Plafond de sécurité d'un bolus unique</td><td><span class="tag sci">Principe</span></td></tr>
+      <tr><td><code>INSULIN_ACTION_MIN / MAX</code></td><td class="num">3,5 / 5,0 h</td><td>Durée d'action des analogues rapides</td><td><span class="tag sci">Principe</span></td></tr>
+      <tr><td><code>FIXED_DOSE_MIN</code></td><td class="num">0,5 U</td><td>Plancher absolu (pas de dose ≤ 0 ; ≥ demi‑unité stylo)</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>FIXED_DOSE_DELIVERY_INCREMENT_U</code></td><td class="num">0,5 U</td><td>Résolution délivrable dose fixe (demi‑unité)</td><td><span class="tag dev">Technique</span></td></tr>
+      <tr><td><code>MDI_BASAL_MIN_U</code></td><td class="num">0,5 U</td><td>Plancher de sanité stylo (= FIXED_DOSE_MIN)</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>MDI_BASAL_DELIVERY_INCREMENT_U</code></td><td class="num">1 U (0,5 si ½‑U)</td><td>Résolution stylo, fail‑closed 1 U — jamais l'incrément pompe</td><td><span class="tag dev">Technique</span></td></tr>
+      <tr><td><code>COLUMN_OVERFLOW_GUARD_FIXED_DOSE_U</code></td><td class="num">999,99 U</td><td>Garde anti‑débordement de colonne — <b>PAS un plafond clinique</b></td><td><span class="tag dev">Technique</span></td></tr>
+      <tr><td><code>COLUMN_OVERFLOW_GUARD_STYLO_U</code></td><td class="num">9999,99 U</td><td>idem (colonne stylo)</td><td><span class="tag dev">Technique</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>9.2 Caps de variation, fenêtres &amp; cooldowns</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Constante</th><th class="num">Valeur</th><th>Sens (code)</th><th>Classe</th></tr></thead>
+    <tbody>
+      <tr><td><code>MAX_CHANGE_PERCENT</code> (moteur)</td><td class="num">±20 %</td><td>Cap de variation d'une proposition automatique</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>PATIENT_MAX_CHANGE_PERCENT</code></td><td class="num">±10 %</td><td>Cap patient — « un pas, pas une titration »</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>FIXED_DOSE_MAX_CHANGE_PERCENT</code> / <code>_DELTA_U</code></td><td class="num">10 % / 2 U</td><td>Double cap dose fixe (le plus petit s'applique)</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>FIXED_DOSE_PATIENT_MAX_DELTA_U</code></td><td class="num">1 U</td><td>Cap patient resserré dose fixe</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td>min. d'événements par créneau</td><td class="num">3</td><td>Sous 3 mesures = bruit statistique</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td>zone morte</td><td class="num">2 %</td><td>Sous 2 % de variation = non actionnable</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>ANALYSIS_PERIOD</code></td><td class="num">14 j</td><td>Fenêtre standard (aligné AGP)</td><td><span class="tag sci">Principe</span><sup class="ref">R2</sup></td></tr>
+      <tr><td><code>ISF_ANALYSIS_WINDOW_DAYS</code></td><td class="num">30 j</td><td>Corrections propres rares → fenêtre longue</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>MDI_BASAL_ANALYSIS_DAYS</code></td><td class="num">7 j</td><td>Plus réactive que 14 j (≥ 3 glycémies à jeun)</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>MIN_NADIR_NIGHTS</code></td><td class="num">3</td><td>Couverture nocturne minimale (garde Somogyi)</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>PATIENT_PROPOSAL_COOLDOWN_HOURS</code></td><td class="num">24 h</td><td>Unité de décision d'une titration patient</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>ENGINE_DEESCALATION_COOLDOWN_HOURS</code> / <code>FIXED_DOSE_COOLDOWN_HOURS</code></td><td class="num">72 h</td><td>Effet jugeable sur ≥ 3 jours</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>MDI_BASAL_COOLDOWN_HOURS</code> / <code>_ULTRALONG</code></td><td class="num">72 h / 96 h</td><td>Steady‑state pharmaco (classique vs ultra‑longue)</td><td><span class="tag sci">Principe</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>9.3 Garde hypoglycémie &amp; dé‑escalade</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Constante</th><th class="num">Valeur</th><th>Sens (code)</th><th>Classe</th></tr></thead>
+    <tbody>
+      <tr><td>seuil hypo niveau 2 (sévère)</td><td class="num">0,54 g/L (54 mg/dL)</td><td>Un seul relevé bloque une hausse</td><td><span class="tag sci">Principe</span><sup class="ref">R1,R9</sup></td></tr>
+      <tr><td>seuil hypo niveau 1</td><td class="num">0,70 g/L (70 mg/dL)</td><td>Bloque si récurrent</td><td><span class="tag sci">Principe</span><sup class="ref">R1</sup></td></tr>
+      <tr><td><code>HYPO_LEVEL1_RECURRENCE_MIN</code></td><td class="num">2</td><td>Nb de relevés niveau‑1 pour « récurrent »</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>HYPO_DEESCALATION_PERCENT</code></td><td class="num">10 %</td><td>Pas de dé‑escalade fixe (≈ pas DAFNE/AACE)</td><td><span class="tag sci">Principe</span><sup class="ref">R12</sup></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>9.4 Stylo (MDI, U totales) &amp; cibles à jeun / post‑prandiales</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Constante</th><th class="num">Valeur</th><th>Sens (code)</th><th>Classe</th></tr></thead>
+    <tbody>
+      <tr><td><code>MDI_BASAL_STEP_U</code> / <code>_STEP_PERCENT</code></td><td class="num">2 U / 10 %</td><td>Pas de hausse treat‑to‑target : max(+2 U, +10 %)</td><td><span class="tag sci">Principe</span><sup class="ref">R7,R1</sup></td></tr>
+      <tr><td><code>MDI_BASAL_MAX_DELTA_U</code> / <code>_MAX_CHANGE_PERCENT</code></td><td class="num">4 U / 20 %</td><td>Cap de variation (ADA 10–20 %)</td><td><span class="tag sci">Principe</span><sup class="ref">R1</sup></td></tr>
+      <tr><td><code>MDI_BASAL_FASTING_DEADBAND_UP / DOWN_GL</code></td><td class="num">0,30 / 0,20 g/L</td><td>Zone morte asymétrique (prudence à la hausse)</td><td><span class="tag sci">Principe</span><sup class="ref">R7</sup> + <span class="tag int">Interne</span></td></tr>
+      <tr><td><code>MDI_BASAL_PATIENT_MAX_DELTA_U</code></td><td class="num">2 U</td><td>Cap baisse patient stylo (moitié du cap moteur)</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>MDI_BASAL_WARN_U</code> / <code>FIXED_BASAL_WARN_U</code></td><td class="num">80 U</td><td>Seuil d'alerte non bloquant (DT2/U300/dégludec)</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>FIXED_BOLUS_WARN_U</code></td><td class="num">25 U</td><td>Seuil d'alerte bolus non bloquant</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>NOCTURNAL_TITRATION_REF_HOUR</code></td><td class="num">05:00</td><td>Créneau titré = actif à 05:00 (agit ~06–08h = à jeun)</td><td><span class="tag int">Interne</span></td></tr>
+      <tr><td><code>POSTMEAL_NADIR_WINDOW_MIN</code></td><td class="num">300 min</td><td>Fenêtre nadir post‑repas (~pic analogue rapide 3–4 h)</td><td><span class="tag sci">Principe</span></td></tr>
+      <tr><td>cible à jeun / plafond PPG (adulte)</td><td class="num">1,0 / ~1,8 g/L</td><td>Cibles individualisées, pathology‑aware</td><td><span class="tag sci">Principe</span><sup class="ref">R1</sup></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>9.5 Données &amp; suffisance (temps‑dans‑la‑cible, AGP, HbA1c)</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Constante</th><th class="num">Valeur</th><th>Sens (code)</th><th>Classe</th></tr></thead>
+    <tbody>
+      <tr><td><code>DASHBOARD_TIR.TARGET_PERCENT</code></td><td class="num">70 %</td><td>Cible internationale de temps dans 70–180 mg/dL</td><td><span class="tag sci">Principe</span><sup class="ref">R2</sup></td></tr>
+      <tr><td><code>AGP_SUFFICIENCY.MIN_DAYS / _CAPTURE_RATE</code></td><td class="num">14 j / 70 %</td><td>AGP fiable ≥ 14 j &amp; ≥ 70 % capture</td><td><span class="tag sci">Principe</span><sup class="ref">R2,R3</sup></td></tr>
+      <tr><td><code>CGM_AGGREGATE_RANGE_GL</code></td><td class="num">0,20–6,00 g/L</td><td>Plage physiologique valide pour les agrégats</td><td><span class="tag sci">Principe</span><sup class="ref">R2</sup></td></tr>
+      <tr><td><code>HBA1C_STALE_DAYS</code></td><td class="num">180 j</td><td>Intervalle de re‑dosage patient contrôlé</td><td><span class="tag sci">Principe</span><sup class="ref">R1</sup></td></tr>
+      <tr><td><code>HBA1C_HIGH_DEFAULT_PERCENT</code> / <code>_PREGNANCY</code></td><td class="num">8,0 % / 6,0 %</td><td>Plancher d'alerte par défaut (conservateur)</td><td><span class="tag sci">Principe</span><sup class="ref">R1</sup> + <span class="tag int">Interne</span></td></tr>
+      <tr><td><code>BGM_CARNET.MIN_READINGS_PER_MOMENT</code></td><td class="num">3</td><td>Sous 3 relevés capillaires = moyenne non publiée</td><td><span class="tag int">Interne</span></td></tr>
+    </tbody>
+  </table></div>
+  <p class="small">Source unique de vérité : <code>src/lib/clinical-bounds.ts</code>, verrouillée contre toute dérive par <code>tests/unit/clinical-bounds.test.ts</code> et cataloguée dans <code>docs/clinical-logic/regles-et-constantes-diabete.md</code>.</p>
+
+  <!-- ================= 10 ================= -->
+  <h2 id="s10" class="anchor"><span class="num">10.</span> Glossaire <a href="#s1" class="backtop">↑ haut</a></h2>
+
+  <h3>10.1 Abréviations</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Sigle</th><th>Développé</th><th>Sens</th></tr></thead>
+    <tbody>
+      <tr><td><b>ISF</b> (FSI)</td><td>Facteur de sensibilité à l'insuline</td><td>Baisse de glycémie obtenue par 1 U (correction). Unité g/L·U.</td></tr>
+      <tr><td><b>ICR</b> (RIG)</td><td>Ratio insuline/glucides</td><td>Grammes de glucides couverts par 1 U (bolus repas). Unité g/U.</td></tr>
+      <tr><td><b>MDI</b></td><td>Multiple Daily Injections</td><td>Insulinothérapie par stylo (injections multiples), par opposition à la pompe.</td></tr>
+      <tr><td><b>PPG</b></td><td>Glycémie post‑prandiale</td><td>Glycémie mesurée ~2 h après le repas.</td></tr>
+      <tr><td><b>TIR</b></td><td>Temps dans la cible</td><td>% du temps passé dans 70–180 mg/dL.</td></tr>
+      <tr><td><b>CGM</b></td><td>Mesure du glucose en continu</td><td>Capteur en continu (vs BGM capillaire).</td></tr>
+      <tr><td><b>BGM</b></td><td>Glycémie capillaire</td><td>Mesures ponctuelles au doigt.</td></tr>
+      <tr><td><b>AGP</b></td><td>Profil glycémique ambulatoire</td><td>Représentation standardisée des données CGM.</td></tr>
+      <tr><td><b>GMI</b></td><td>Indicateur de gestion du glucose</td><td>Estimation d'HbA1c à partir du CGM.</td></tr>
+      <tr><td><b>HbA1c</b></td><td>Hémoglobine glyquée</td><td>Reflet du contrôle glycémique sur ~3 mois.</td></tr>
+      <tr><td><b>IOB</b></td><td>Insuline active</td><td>Insuline encore en action (« insulin on board »).</td></tr>
+      <tr><td><b>CV</b></td><td>Coefficient de variation</td><td>Mesure de la variabilité glycémique.</td></tr>
+      <tr><td><b>DKA</b></td><td>Acidocétose diabétique</td><td>Urgence métabolique ; risque accru en jour‑de‑maladie si insuline réduite.</td></tr>
+      <tr><td><b>DT1 / DT2</b></td><td>Diabète de type 1 / 2</td><td>—</td></tr>
+      <tr><td><b>GD</b></td><td>Diabète gestationnel</td><td>Cibles glycémiques plus strictes.</td></tr>
+      <tr><td><b>ADA</b></td><td>American Diabetes Association</td><td>Source de recommandations de référence.</td></tr>
+      <tr><td><b>ISPAD</b></td><td>International Society for Pediatric and Adolescent Diabetes</td><td>Recommandations pédiatriques.</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>10.2 Terminologie métier</h3>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>Terme</th><th>Définition (telle qu'implémentée)</th></tr></thead>
+    <tbody>
+      <tr><td><b>Proposition groupée</b> (<code>SlotSetProposal</code>)</td><td>Suggestion portant sur la disposition <b>entière</b> d'un levier (tous les créneaux), jamais une valeur isolée.</td></tr>
+      <tr><td><b>Levier</b></td><td>Un des paramètres ajustables : ISF, ICR, basale (pompe/stylo), dose fixe.</td></tr>
+      <tr><td><b>Créneau</b> (slot)</td><td>Une tranche de la disposition : horaire (ISF/ICR/pompe), ou clé (stylo <code>kind</code>, dose fixe <code>usage×moment</code>).</td></tr>
+      <tr><td><b>Zone morte</b> (deadband)</td><td>Bande autour de la cible dans laquelle aucune modification n'est proposée (évite le « bruit »).</td></tr>
+      <tr><td><b>Dé‑escalade</b></td><td>Proposition <b>active</b> de réduire l'insuline en réponse à des hypoglycémies récurrentes.</td></tr>
+      <tr><td><b>Cooldown</b></td><td>Délai minimal entre deux propositions sur le même levier (le temps que l'effet s'installe).</td></tr>
+      <tr><td><b>Snapping</b></td><td>Arrondi de la valeur proposée au pas réel du dispositif (délivrabilité).</td></tr>
+      <tr><td><b>Compare‑and‑swap (CAS)</b></td><td>Contrôle, à l'acceptation, que la base n'a pas changé depuis la génération (anti‑écrasement).</td></tr>
+      <tr><td><b>Somogyi</b></td><td>Rebond hyperglycémique matinal consécutif à une hypoglycémie nocturne ; contre‑indique une hausse de basale.</td></tr>
+      <tr><td><b>Maturité</b></td><td>Niveau d'autonomie du patient (JUNIOR / INTERMEDIATE / CONFIRME) fixé par le médecin.</td></tr>
+      <tr><td><b>Frontière dispositif médical</b></td><td>Un patient non insuliné ne reçoit <b>aucune</b> proposition de dose — seulement des orientations.</td></tr>
+      <tr><td><b>Orientation</b> (<code>ClinicalReviewFlag</code>)</td><td>Signal d'aiguillage vers la consultation, <b>sans posologie</b>.</td></tr>
+      <tr><td><b>Plafonnement (D1)</b></td><td>Ramener une valeur calculée hors borne à la borne clinique, en le signalant au médecin.</td></tr>
+    </tbody>
+  </table></div>
+
+  <!-- ================= REFS ================= -->
+  <h2 id="refs" class="anchor"><span class="num">11.</span> Références scientifiques <a href="#s1" class="backtop">↑ haut</a></h2>
+  <div class="callout science"><div class="ct">Portée de ces références</div>
+  <p style="margin:.2rem 0 0">Les références ci‑dessous étayent les <b>principes cliniques</b> mobilisés par l'algorithme (cibles glycémiques, seuils d'hypoglycémie, titration treat‑to‑target, estimation ISF/ICR, temps‑dans‑la‑cible, prévention de l'acidocétose). Elles <b>ne valident pas</b> les valeurs numériques exactes des seuils, caps et fenêtres, qui sont des <b>calibrations internes Diabeo</b> (marquées <span class="tag int">Interne</span> au §9). Les localisateurs (volume/pages) sont donnés de bonne foi et doivent être <b>vérifiés sur la source primaire</b> avant tout usage réglementaire ou publication.</p>
+  </div>
+  <div class="tbl-wrap"><table>
+    <thead><tr><th>#</th><th>Référence</th><th>Étaye</th></tr></thead>
+    <tbody>
+      <tr><td class="num">R1</td><td>American Diabetes Association Professional Practice Committee. <i>Standards of Care in Diabetes</i>. <b>Diabetes Care</b> (publication annuelle, Suppl. 1).</td><td>Cibles glycémiques, niveaux d'hypoglycémie, correction, intervalles HbA1c, gestion jour‑de‑maladie.</td></tr>
+      <tr><td class="num">R2</td><td>Battelino T, Danne T, Bergenstal RM, <i>et al.</i> Clinical Targets for Continuous Glucose Monitoring Data Interpretation: Recommendations From the International Consensus on Time in Range. <b>Diabetes Care</b> 2019;42(8):1593–1603.</td><td>TIR 70 %, plage 70–180 mg/dL, ≥ 14 j / ≥ 70 % de capture.</td></tr>
+      <tr><td class="num">R3</td><td>Danne T, Nimri R, Battelino T, <i>et al.</i> International Consensus on Use of Continuous Glucose Monitoring. <b>Diabetes Care</b> 2017;40(12):1631–1640.</td><td>Métriques CGM, suffisance de données.</td></tr>
+      <tr><td class="num">R4</td><td>The Diabetes Control and Complications Trial (DCCT) Research Group. The Effect of Intensive Treatment of Diabetes… <b>N Engl J Med</b> 1993;329(14):977–986.</td><td>Bénéfice du contrôle glycémique intensif (fondement de la titration).</td></tr>
+      <tr><td class="num">R5</td><td>Walsh J, Roberts R. <i>Pumping Insulin</i>. 6ᵉ éd. Torrey Pines Press; 2016.</td><td>Règles 1800 / 500 ; estimation ISF/ICR.</td></tr>
+      <tr><td class="num">R6</td><td>Davidson PC, Hebblewhite HR, Steed RD, Bode BW. Analysis of guidelines for basal‑bolus insulin dosing: basal insulin, correction factor, and carbohydrate‑to‑insulin ratio. <b>Endocr Pract</b> 2008;14(9):1095–1101.</td><td>Facteur de correction, ratio glucides.</td></tr>
+      <tr><td class="num">R7</td><td>Riddle MC, Rosenstock J, Gerich J; Insulin Glargine 4002 Study Investigators. The Treat‑to‑Target Trial. <b>Diabetes Care</b> 2003;26(11):3080–3086.</td><td>Titration basale par pas fixes vers une cible à jeun.</td></tr>
+      <tr><td class="num">R8</td><td>ISPAD Clinical Practice Consensus Guidelines 2022. <b>Pediatric Diabetes</b> 2022;23 (chapitres cibles glycémiques, insulinothérapie, DKA / sick‑day).</td><td>Plages pédiatriques, gestion jour‑de‑maladie / DKA.</td></tr>
+      <tr><td class="num">R9</td><td>International Hypoglycaemia Study Group. Glucose Concentrations of Less Than 3.0 mmol/L (54 mg/dL) Should Be Reported… <b>Diabetes Care</b> 2017;40(1):155–157.</td><td>Seuil d'hypoglycémie de niveau 2 (54 mg/dL).</td></tr>
+      <tr><td class="num">R10</td><td>Bergenstal RM, Beck RW, Close KL, <i>et al.</i> Glucose Management Indicator (GMI)… <b>Diabetes Care</b> 2018;41(11):2275–2280.</td><td>Définition du GMI.</td></tr>
+      <tr><td class="num">R11</td><td>Bolli GB, Gerich JE. The « dawn phenomenon »… <b>N Engl J Med</b> 1984;310(12):746–750.</td><td>Contexte phénomène de l'aube / Somogyi.</td></tr>
+      <tr><td class="num">R12</td><td>DAFNE Study Group. Training in flexible, intensive insulin management (DAFNE)… <b>BMJ</b> 2002;325(7367):746.</td><td>Ajustement de doses par comptage de glucides (pas de titration).</td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="callout note" style="margin-top:26px"><div class="ct">Traçabilité</div>
+  <p style="margin:.2rem 0 0">Comportements décrits d'après : <code>proposal-algorithm.ts</code>, <code>proposal-generator.service.ts</code>, <code>slot-set-proposal.service.ts</code>, <code>patient-grouped-gate.ts</code>, <code>adjustment.service.ts</code>, <code>treatment-mode.service.ts</code>, <code>clinical-bounds.ts</code>, les routes <code>api/patient/insulin-slot-set</code>, <code>api/slot-set-proposals</code>, <code>api/patients/[id]/review</code>, et les composants <code>GroupedProposalReview.tsx</code>, <code>InsulinSlotSetDialog.tsx</code>, <code>InsulinStyloBasalDialog.tsx</code>, <code>ReviewClient.tsx</code>. Catalogue clinique : <code>docs/clinical-logic/regles-et-constantes-diabete.md</code>.</p>
+  </div>
+
+</div>
+
+<footer class="foot">
+  <div class="wrap">
+    <p><b>Diabeo — Guide du processus de proposition d'ajustement d'insuline.</b> Document de compréhension, non contractuel.
+    Aucune proposition n'est jamais appliquée sans validation d'un médecin (ADR #13). Les valeurs numériques marquées
+    « Décision interne » relèvent de la calibration Diabeo validée médicalement en interne ; les références scientifiques
+    étayent les principes et doivent être vérifiées sur la source primaire.</p>
+  </div>
+</footer>
+
+</body>
+</html>
