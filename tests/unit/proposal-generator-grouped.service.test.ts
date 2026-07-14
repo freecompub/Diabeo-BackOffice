@@ -231,13 +231,12 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     expect(res.slotsConsidered).toBe(1) // le créneau a bien été analysé
   })
 
-  it("flag OFF (défaut) — voie par-valeur INCHANGÉE (createEngineProposal, aucune groupée)", async () => {
-    delete process.env.ENGINE_GROUPED_ISF_ICR
+  it("US-2663 (S5) — GROUPED-ONLY : sans flag, émet groupé (jamais par-valeur `createEngineProposal`)", async () => {
+    delete process.env.ENGINE_GROUPED_ISF_ICR // le flag n'existe plus : le groupé est le comportement PAR DÉFAUT
     setup()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createSet).not.toHaveBeenCalled()
-    expect(createEngine).toHaveBeenCalledTimes(1)
-    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "insulinToCarbRatio", reason: "icrTooHigh" })
+    expect(createEngine).not.toHaveBeenCalled() // voie par-valeur retirée (S5)
+    expect(setCallFor("insulinToCarbRatio")).toBeDefined()
     expect(res.created).toBe(1)
   })
 
@@ -528,12 +527,11 @@ describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c, fl
     expect(res.created).toBe(1)
   })
 
-  it("flag OFF (défaut) — voie par-valeur POMPE inchangée (createEngineProposal, aucune groupée)", async () => {
+  it("US-2663 (S5) — GROUPED-ONLY POMPE : sans flag, émet groupé (jamais par-valeur)", async () => {
     setupPump()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createSet).not.toHaveBeenCalled()
-    expect(createEngine).toHaveBeenCalledTimes(1)
-    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "basalRate", pumpBasalSlotId: "noct" })
+    expect(createEngine).not.toHaveBeenCalled() // voie par-valeur retirée (S5)
+    expect(createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")).toBeDefined()
     expect(res.created).toBe(1)
   })
 })
@@ -632,12 +630,12 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
     expect(res.created).toBe(1)
   })
 
-  it("flag OFF (défaut) — voie par-valeur INCHANGÉE (createEngineProposal, aucune groupée)", async () => {
+  it("US-2663 (S5) — GROUPED-ONLY DOSE FIXE : sans flag, émet groupé (jamais par-valeur)", async () => {
+    delete process.env.ENGINE_GROUPED_FIXED_DOSE // flag retiré : groupé par défaut
     setupFixedDose()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createSet).not.toHaveBeenCalled()
-    expect(createEngine).toHaveBeenCalledTimes(1)
-    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "fixedDose", moment: "morning" })
+    expect(createEngine).not.toHaveBeenCalled() // voie par-valeur retirée (S5)
+    expect(createSet.mock.calls.find((c) => c[0]?.parameterType === "fixedDose")).toBeDefined()
     expect(res.created).toBe(1)
   })
 
@@ -762,12 +760,12 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     expect(res.created).toBe(1)
   })
 
-  it("flag OFF (défaut) — voie par-valeur STYLO inchangée (createEngineProposal basalDoseKind daily, aucune groupée)", async () => {
+  it("US-2663 (S5) — GROUPED-ONLY STYLO : sans flag, émet groupé (jamais par-valeur `createEngineProposal`)", async () => {
+    delete process.env.ENGINE_GROUPED_STYLO // flag retiré : groupé par défaut
     setupStyloSingle()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createSet).not.toHaveBeenCalled()
-    expect(createEngine).toHaveBeenCalledTimes(1)
-    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "basalRate", basalDoseKind: "daily" })
+    expect(createEngine).not.toHaveBeenCalled() // voie par-valeur retirée (S5)
+    expect(createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")).toBeDefined()
     expect(res.created).toBe(1)
   })
 

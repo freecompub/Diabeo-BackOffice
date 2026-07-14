@@ -102,36 +102,18 @@ OVH_S3_REGION="gra"
 | `RESEND_API_KEY` | Emails non envoyés (loggués dans la console à la place) |
 | `UPSTASH_REDIS_REST_URL` + `UPSTASH_REDIS_REST_TOKEN` | Session revocation en mémoire (perdue au restart du serveur) |
 
-### 3.5 Flags moteur — proposition GROUPÉE (US-2663, ADR #31)
+### 3.5 Moteur d'ajustement — GROUPED-ONLY (US-2663 S5, ADR #31)
 
-Le moteur d'ajustement peut émettre ses propositions de deux façons, pilotées par des **feature flags**
-d'environnement **réversibles**, un par famille de levier. Ils basculent la voie d'ÉCRITURE de la
-proposition (par-valeur `AdjustmentProposal` → groupée `SlotSetProposal`) — **jamais** les décisions
-cliniques (bornes, dé-escalade, cooldown, gardes hypo restent identiques).
+Le moteur d'ajustement émet **TOUJOURS** des propositions **GROUPÉES** (`SlotSetProposal`, disposition
+entière d'un levier), pour les 4 familles (ISF/ICR, basale pompe, basale stylo, dose fixe). La voie
+d'écriture **par-valeur** (`AdjustmentProposal` via `createEngineProposal`) a été **retirée** en S5 —
+il n'y a plus de flag `ENGINE_GROUPED_*` à activer (le comportement groupé est le seul).
 
-| Flag | Levier basculé en émission groupée |
-|---|---|
-| `ENGINE_GROUPED_ISF_ICR` | Sensibilité (ISF) + ratio glucides (ICR) — **basculent ensemble** |
-| `ENGINE_GROUPED_PUMP` | Basale **pompe** (créneaux `"HH:MM"`, débit U/h) |
-| `ENGINE_GROUPED_FIXED_DOSE` | Dose fixe (mode « doses simples », clé `(usage, moment)`) |
-| `ENGINE_GROUPED_STYLO` | Basale **stylo** (MDI single/split, doses U totales) |
-
-**Valeurs** : exactement `"true"` ou `"false"` (toute autre valeur fait **échouer le boot** —
-`assertOptionalBoolean`, `src/lib/env.ts`). **Absente = OFF** (défaut). Chaque flag est **indépendant**
-(rollout/rollback granulaire). Lu une fois par run du générateur → un `pnpm dev` après édition suffit.
-
-**Activer en local** (ex. pour voir l'écran de revue médecin `/patients/[id]/review` avec des
-propositions groupées) — dans `.env` :
-
-```bash
-# OFF par défaut ; mettre "true" pour tester la voie groupée d'un levier.
-ENGINE_GROUPED_STYLO=true
-```
-
-> ⚠️ **Ne pas activer en production sans coordination iOS.** Flag ON, le moteur émet des
-> `SlotSetProposal` (groupées) au lieu des `AdjustmentProposal` (par-valeur) que l'app iOS lit
-> encore aujourd'hui — la rupture de contrat est concentrée en slice **S5** (retrait de la voie
-> par-valeur, coordination `swift-expert`). En local c'est sans risque (pas d'app iOS branchée).
+> Historique : jusqu'à S4, la bascule était pilotée par des flags réversibles OFF par défaut. S5 les a
+> retirés (moteur grouped-only). Les décisions cliniques (bornes, dé-escalade, cooldown, gardes hypo,
+> Somogyi, hold-zone, priorité single/split) sont **inchangées** — seule la voie d'émission a changé.
+> Un plafonnement à la borne clinique + note (`cappedToBound`) surface au médecin une valeur calculée
+> hors-borne (D1) au lieu de rejeter le levier.
 
 ---
 

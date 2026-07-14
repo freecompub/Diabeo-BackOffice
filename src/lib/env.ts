@@ -346,24 +346,9 @@ export function assertRequiredEnv(): void {
   // clinique en prod. Fail-fast sur valeur malformée : une faute de saisie ne
   // doit pas désactiver silencieusement le pilote (cf. capabilities.pilotAllowed).
   assertOptionalBoolean("VERIFICATION_ALLOW_PILOT")
-  // US-2663 (S3b-1) — bascule RÉVERSIBLE du moteur d'ajustement vers l'émission
-  // GROUPÉE (une `SlotSetProposal` par levier ISF/ICR au lieu de N `AdjustmentProposal`
-  // par-valeur). OFF par défaut : une faute de saisie ne doit pas activer/désactiver
-  // silencieusement la nouvelle voie clinique (`proposal-generator.service.ts`).
-  assertOptionalBoolean("ENGINE_GROUPED_ISF_ICR")
-  // US-2663 (S3c/PR-A) — bascule RÉVERSIBLE du moteur vers l'émission GROUPÉE de la
-  // basale POMPE (`SlotSetProposal` basalRate, disposition entière). Flag DISTINCT
-  // d'ISF/ICR (rollout/rollback basal indépendant du groupé ISF/ICR déjà stabilisé).
-  // OFF par défaut. La basale STYLO et la dose fixe ont/auront leurs propres flags.
-  assertOptionalBoolean("ENGINE_GROUPED_PUMP")
-  // US-2663 (S3d/PR2) — bascule RÉVERSIBLE du moteur vers l'émission GROUPÉE de la
-  // DOSE FIXE (`SlotSetProposal` fixedDose, clé `(usage, moment)`). Flag DISTINCT.
-  // OFF par défaut ⇒ voie par-valeur dose fixe inchangée.
-  assertOptionalBoolean("ENGINE_GROUPED_FIXED_DOSE")
-  // US-2663 (S3e PR2) — basale STYLO (MDI) : émission GROUPÉE (`SlotSetProposal` basalRate de
-  // forme STYLO, clé `basalDoseKind`) au lieu des `AdjustmentProposal` par-valeur single/split.
-  // Flag DISTINCT. OFF par défaut ⇒ voie par-valeur stylo inchangée (aucune rupture iOS avant S5).
-  assertOptionalBoolean("ENGINE_GROUPED_STYLO")
+  // US-2663 (S5) — les flags `ENGINE_GROUPED_ISF_ICR`/`_PUMP`/`_FIXED_DOSE`/`_STYLO` ont été RETIRÉS : le moteur
+  // d'ajustement est désormais GROUPED-ONLY (émet toujours des `SlotSetProposal`, voie par-valeur supprimée). Un
+  // flag résiduel dans l'environnement est donc inerte — plus de validation au boot.
   // US-2270 — defense-in-depth : le gate runtime (dev-mock.ts) neutralise déjà
   // les flags de mock en prod, mais un flag résiduel est un signal de misconfig
   // qui doit remonter (ANSSI). On refuse le boot prod plutôt que de neutraliser

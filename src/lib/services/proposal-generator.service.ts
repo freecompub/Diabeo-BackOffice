@@ -42,11 +42,10 @@ import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern, localDay, type JournalMeal, type CorrectionPoint } from "@/lib/services/meal-trends.service"
 import { getCgmDefaults, objectivesService } from "@/lib/services/objectives.service"
-import { adjustmentService, reasonImpliesIncrease } from "@/lib/services/adjustment.service"
+import { reasonImpliesIncrease } from "@/lib/services/adjustment.service"
 import { auditService } from "@/lib/services/audit.service"
 import type { AuditContext } from "@/lib/services/patient.service"
 // US-2663 (S3b-1) — émission GROUPÉE moteur (derrière flag `ENGINE_GROUPED_ISF_ICR`).
-import { getEnvBoolean } from "@/lib/env"
 import { slotSetProposalService, type SlotSetParam } from "@/lib/services/slot-set-proposal.service"
 import type { IsfIcrSlot, PumpBasalSlot, FixedDoseSlot, StyloBasalSlot, SlotRationale } from "@/lib/insulin/grouped-proposal"
 import type { InsulinUsage, DoseMoment } from "@prisma/client"
@@ -312,16 +311,6 @@ function resolveFastingTarget(individualizedGl: number | null, isPregnancy: bool
   return isPregnancy ? CLINICAL_BOUNDS.FASTING_TARGET_PREGNANCY_GL : CLINICAL_BOUNDS.FASTING_TARGET_DEFAULT_GL
 }
 
-/**
- * Codes de rejet ATTENDUS de `createEngineProposal` (fail-closed, non fatals). Tout autre message
- * est traité comme inattendu : on ne le logue PAS verbatim (défense en profondeur PHI, suivi HDS) —
- * code générique `"unexpected"` + erreur brute vers `logger.error`.
- */
-const EXPECTED_SKIP = new Set([
-  "baselineMovedAtPersist", "duplicatePendingProposal", "valueOutOfBounds",
-  "reasonDirectionMismatch", "nonInsulinNoDose", "invalidSupportingEvents",
-  "slotRequired", "currentValueNotFound",
-])
 
 /**
  * US-2663 (S3b-1) — Codes de rejet ATTENDUS de `createSetProposal` (voie GROUPÉE moteur), fail-closed non
@@ -927,52 +916,13 @@ export const proposalGeneratorService = {
     let flagged = 0
     let slotsConsidered = 0
 
-    // US-2663 (S3b-1) — bascule RÉVERSIBLE : en mode GROUPÉ on COLLECTE les candidats ISF/ICR (au lieu de
-    // persister par-valeur) puis on émet une `SlotSetProposal` par levier après chaque boucle. OFF par défaut
-    // (prod inchangée). Lu une fois par run (parité `fhir.isEnabled`). ⚠️ ICR ET ISF basculent ensemble (R6).
-    const groupedIsfIcr = getEnvBoolean("ENGINE_GROUPED_ISF_ICR") === true
-    // US-2663 (S3c/PR-A) — bascule RÉVERSIBLE de la basale POMPE en émission groupée (flag DISTINCT d'ISF/ICR).
-    const groupedPump = getEnvBoolean("ENGINE_GROUPED_PUMP") === true
-    // US-2663 (S3e PR2) — bascule RÉVERSIBLE de la basale STYLO (single/split) en émission groupée (flag DISTINCT).
-    const groupedStylo = getEnvBoolean("ENGINE_GROUPED_STYLO") === true
-    // Collecte STYLO (single OU split — mutuellement exclusifs par `configType`) : au plus 1 dose/run décidée par
-    // le moteur, émise en UNE `SlotSetProposal` de forme STYLO après les deux chemins. `windowDays` numérique
-    // (rationale groupée) résolu dans le chemin actif.
+    // US-2663 (S5) — GROUPED-ONLY : le moteur émet TOUJOURS des `SlotSetProposal` (par levier), la voie par-valeur
+    // `createEngineProposal` est retirée. Collecte STYLO (single OU split — mutuellement exclusifs par `configType`) :
+    // au plus 1 dose/run décidée, émise en UNE `SlotSetProposal` STYLO après les deux chemins. `windowDays` numérique.
     const styloCandidates: CollectedStyloCandidate[] = []
     let styloWindowDays: number = CLINICAL_BOUNDS.MDI_BASAL_ANALYSIS_DAYS
     const icrCandidates: CollectedCandidate[] = []
     const pumpCandidates: CollectedPumpCandidate[] = []
-
-    // Persiste un candidat (deadband ou dé-escalade). Rejets fail-closed logués + non fatals.
-    const persist = async (candidate: ProposalCandidate, slot: (typeof slots)[number]): Promise<boolean> => {
-      try {
-        await adjustmentService.createEngineProposal({
-          patientId,
-          parameterType: "insulinToCarbRatio",
-          proposedValue: candidate.proposedValue,
-          expectedCurrentValue: candidate.currentValue,
-          reason: candidate.reason,
-          confidence: candidate.confidence,
-          supportingEvents: candidate.supportingEvents,
-          totalEventsConsidered: candidate.totalEventsConsidered,
-          averageObservedValue: candidate.averageObservedValue ?? null,
-          analysisPeriod,
-          carbRatioSlotStart: slot.startHour,
-          carbRatioSlotEnd: slot.endHour,
-        }, ctx)
-        return true
-      } catch (err) {
-        const msg = (err as Error).message
-        const bucket = `${slot.startHour}-${slot.endHour}`
-        if (EXPECTED_SKIP.has(msg)) {
-          logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
-        } else {
-          logger.error("proposal-generator", "unexpected engine proposal error",
-            { patientId, bucket, failMode: "unexpected" }, err as Error)
-        }
-        return false
-      }
-    }
 
     for (const { slot, meals } of bySlot.values()) {
       if (meals.length < MIN_MEALS_PER_SLOT) continue
@@ -1031,17 +981,15 @@ export const proposalGeneratorService = {
         await raiseIcrFlag()
       }
 
-      if (candidate) {
-        // Mode GROUPÉ : collecte (émission différée après la boucle) ; sinon persistance par-valeur immédiate.
-        if (groupedIsfIcr) icrCandidates.push({ startHour: slot.startHour, endHour: slot.endHour, cand: candidate })
-        else if (await persist(candidate, slot)) created++
-      }
+      // US-2663 (S5) — GROUPED-ONLY : on COLLECTE toujours (émission `SlotSetProposal` différée après la boucle) ;
+      // la voie par-valeur `createEngineProposal` est retirée (plus de flag).
+      if (candidate) icrCandidates.push({ startHour: slot.startHour, endHour: slot.endHour, cand: candidate })
     }
 
-    // US-2663 (S3b-1) — émission GROUPÉE ICR (1 `SlotSetProposal` couvrant tous les créneaux changés). Fenêtre
-    // en jours (int) pour la rationale : `windowDays` (borné [2,14] par l'appelant) sinon 14 j par défaut —
+    // US-2663 (S3b-1 → S5 grouped-only) — émission GROUPÉE ICR (1 `SlotSetProposal` couvrant tous les créneaux
+    // changés). Fenêtre en jours (int) pour la rationale : `windowDays` (borné [2,14] par l'appelant) sinon 14 j —
     // dérivé de la valeur, JAMAIS parsé du suffixe `"<n>d"` (pas de `NaN` possible qui casserait la rationale).
-    if (groupedIsfIcr) {
+    {
       const res = await emitGroupedIsfIcr(patientId, "insulinToCarbRatio", icrCandidates, windowDays ?? 14, ctx)
       if (res.emitted) created++
     }
@@ -1094,36 +1042,10 @@ export const proposalGeneratorService = {
             .then(() => { flagged++ })
             .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: basalBucket }, err as Error))
 
-        const persistBasal = async (cand: ProposalCandidate) => {
-          // Mode GROUPÉ (S3c) : collecte (émission différée après le bloc pompe) ; sinon par-valeur immédiat.
-          if (groupedPump) {
-            pumpCandidates.push({ slotId: nocturnalSlot.id, startHour: nocturnalSlot.startHour, cand })
-            return
-          }
-          try {
-            await adjustmentService.createEngineProposal({
-              patientId,
-              parameterType: "basalRate",
-              proposedValue: cand.proposedValue,
-              expectedCurrentValue: cand.currentValue,
-              reason: cand.reason,
-              confidence: cand.confidence,
-              supportingEvents: cand.supportingEvents,
-              totalEventsConsidered: cand.totalEventsConsidered,
-              averageObservedValue: cand.averageObservedValue ?? null,
-              analysisPeriod,
-              pumpBasalSlotId: nocturnalSlot.id,
-            }, ctx)
-            created++
-          } catch (err) {
-            const msg = (err as Error).message
-            if (EXPECTED_SKIP.has(msg)) {
-              logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket: basalBucket, failMode: msg })
-            } else {
-              logger.error("proposal-generator", "unexpected engine proposal error",
-                { patientId, bucket: basalBucket, failMode: "unexpected" }, err as Error)
-            }
-          }
+        // GROUPED-ONLY (S5) : collecte le candidat pompe (émission `SlotSetProposal` différée après le bloc) —
+        // la voie par-valeur `createEngineProposal` est retirée.
+        const persistBasal = (cand: ProposalCandidate) => {
+          pumpCandidates.push({ slotId: nocturnalSlot.id, startHour: nocturnalSlot.startHour, cand })
         }
 
         // MATRICE deadband × nadir nocturne (US-2653, validé medical) :
@@ -1137,13 +1059,13 @@ export const proposalGeneratorService = {
           // (sinon repli fastingValues → hypo 3 h masquée → hausse dangereuse). Baisses inconditionnelles.
           const isIncrease = candidate?.reason === "basalTooLow"
           if (candidate && !(isIncrease && nocturnalNadirs.length < MIN_NADIR_NIGHTS)) {
-            await persistBasal(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
+            persistBasal(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
           } else if (recurrentNoct) {
             // Dans la bande + hypo nocturne récurrente → baisse FIXE −10 % (dé-escalade). Jugée sur les
             // nadirs POST-changement (Q6a) + plancher temporel `withinCooldown`.
             const de = analyzeBasalHypoDeescalation(nocturnalSlot.rate, postNocturnalNadirs)
             if (de.kind === "proposal" && !withinCooldown) {
-              await persistBasal(de.candidate)
+              persistBasal(de.candidate)
             } else if (de.kind === "flagNonActionable") {
               await raiseNocturnalFlag() // débit trop bas pour titrer d'un incrément → restructuration = revue
             } else if (severeNoct) {
@@ -1156,9 +1078,9 @@ export const proposalGeneratorService = {
       }
     }
 
-    // US-2663 (S3c) — émission GROUPÉE POMPE (1 `SlotSetProposal` basalRate couvrant TOUS les créneaux pompe,
-    // débit nocturne changé superposé). Fenêtre = `windowDays ?? 14` (jours, cf. `analysisPeriod` pompe).
-    if (groupedPump) {
+    // US-2663 (S3c → S5 grouped-only) — émission GROUPÉE POMPE (1 `SlotSetProposal` basalRate couvrant TOUS les
+    // créneaux pompe, débit nocturne changé superposé). Fenêtre = `windowDays ?? 14` (jours, cf. `analysisPeriod` pompe).
+    {
       const res = await emitGroupedPumpBasal(patientId, pumpCandidates, windowDays ?? 14, ctx)
       if (res.emitted) created++
     }
@@ -1206,32 +1128,6 @@ export const proposalGeneratorService = {
             .then(() => { flagged++ })
             .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: mdiBucket }, err as Error))
 
-        const persistMdi = async (cand: ProposalCandidate) => {
-          try {
-            await adjustmentService.createEngineProposal({
-              patientId,
-              parameterType: "basalRate",
-              proposedValue: cand.proposedValue,
-              expectedCurrentValue: cand.currentValue,
-              reason: cand.reason,
-              confidence: cand.confidence,
-              supportingEvents: cand.supportingEvents,
-              totalEventsConsidered: cand.totalEventsConsidered,
-              averageObservedValue: cand.averageObservedValue ?? null,
-              analysisPeriod: mdiPeriod,
-              basalDoseKind: "daily",
-            }, ctx)
-            created++
-          } catch (err) {
-            const msg = (err as Error).message
-            if (EXPECTED_SKIP.has(msg)) {
-              logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket: mdiBucket, failMode: msg })
-            } else {
-              logger.error("proposal-generator", "unexpected engine proposal error", { patientId, bucket: mdiBucket, failMode: "unexpected" }, err as Error)
-            }
-          }
-        }
-
         if (fastingValues.length >= MIN_NADIR_NIGHTS) {
           // Décision unifiée (matrice validée S1) : Somogyi → dé-escalade → treat-to-target POST-changement (fix M1)
           // → AC-4/Q6b. Une dose (daily), garde = nadirs nocturnes (fenêtre-suivant-la-dose).
@@ -1240,11 +1136,10 @@ export const proposalGeneratorService = {
             guardNadirs: nocturnalNadirs, guardNadirsPost: postNocturnalNadirs,
             currentDose, targetGl, inc, withinCooldown, coverageOk, confounded: false,
           })
-          // Mode GROUPÉ (S3e PR2) : collecte (émission `SlotSetProposal` STYLO différée) ; sinon par-valeur immédiat.
-          if (decision.kind === "proposal") {
-            if (groupedStylo) styloCandidates.push({ kind: "daily", cand: decision.cand })
-            else await persistMdi(decision.cand)
-          } else if (decision.kind === "flag") await raiseMdiFlag()
+          // GROUPED-ONLY (S5) : collecte la dose décidée (émission `SlotSetProposal` STYLO différée) — la voie
+          // par-valeur `createEngineProposal` est retirée.
+          if (decision.kind === "proposal") styloCandidates.push({ kind: "daily", cand: decision.cand })
+          else if (decision.kind === "flag") await raiseMdiFlag()
         }
       }
     }
@@ -1279,23 +1174,6 @@ export const proposalGeneratorService = {
         )
           .then(() => { flagged++ })
           .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: `basal:stylo:${kind}` }, err as Error))
-
-      const persistSplit = async (cand: ProposalCandidate, kind: "morning" | "evening") => {
-        const bucket = `basal:stylo:${kind}`
-        try {
-          await adjustmentService.createEngineProposal({
-            patientId, parameterType: "basalRate", proposedValue: cand.proposedValue,
-            expectedCurrentValue: cand.currentValue, reason: cand.reason, confidence: cand.confidence,
-            supportingEvents: cand.supportingEvents, totalEventsConsidered: cand.totalEventsConsidered,
-            averageObservedValue: cand.averageObservedValue ?? null, analysisPeriod: mdiPeriod, basalDoseKind: kind,
-          }, ctx)
-          created++
-        } catch (err) {
-          const msg = (err as Error).message
-          if (EXPECTED_SKIP.has(msg)) logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
-          else logger.error("proposal-generator", "unexpected engine proposal error", { patientId, bucket, failMode: "unexpected" }, err as Error)
-        }
-      }
 
       // ── Dose du SOIR : glycémie à jeun (CGM→BGM), garde nocturne (identique single_injection). ──
       let evDecision: MdiDoseDecision = { kind: "none" }
@@ -1360,25 +1238,11 @@ export const proposalGeneratorService = {
         // Comparateur robuste (borné à ≤ 2 cibles distinctes, mais explicite l'intention).
         proposals.sort((a, b) => Number(b.isDeesc) - Number(a.isDeesc) || (a.d === b.d ? 0 : a.d === "evening" ? -1 : 1))
         const winner = proposals[0]
-        if (groupedStylo) {
-          // Voie GROUPÉE (S3e PR2) : la gagnante est collectée pour l'émission `SlotSetProposal` STYLO. L'unicité
-          // « 1 pending basalRate » est portée par `createSetProposal` (supersession du pending) — le verrou
-          // par-valeur `one_pending_stylo_basal` ne s'applique pas ici, donc pas de « défer silencieux » : la vue
-          // moteur la plus récente supersède (parité pompe/ISF/ICR groupés).
-          styloCandidates.push({ kind: winner.d, cand: winner.cand })
-        } else {
-          // Verrou Q6 : au plus 1 basale stylo pending (toutes cibles). Applicatif ici + index base (course inter-run).
-          const pending = await prisma.adjustmentProposal.findFirst({
-            where: { patientId, parameterType: "basalRate", status: "pending", NOT: { basalDoseKind: null } },
-            select: { id: true },
-          })
-          if (pending) {
-            if (winner.isDeesc) await raiseSplitFlag(winner.d) // fail-loud : une dé-escalade (sécurité) bloquée par le verrou → flag
-            // sinon (titration) → défer silencieux, repris au prochain run une fois la pending résolue.
-          } else {
-            await persistSplit(winner.cand, winner.d)
-          }
-        }
+        // GROUPED-ONLY (S5) : la gagnante est collectée pour l'émission `SlotSetProposal` STYLO. L'unicité
+        // « 1 pending basalRate » est portée par `createSetProposal` (supersession du pending) — plus de verrou
+        // par-valeur `one_pending_stylo_basal` ni de « défer silencieux » (voie par-valeur retirée). La vue moteur
+        // la plus récente supersède (parité pompe/ISF/ICR groupés).
+        styloCandidates.push({ kind: winner.d, cand: winner.cand })
         // Fail-loud : toute AUTRE dé-escalade (perdante du run — les DEUX doses sur-basalisées) est un signal de
         // SÉCURITÉ → flag immédiat, jamais un drop silencieux (parité avec le chemin single ; ne pas attendre le
         // run suivant pour surfacer une hypo récurrente sur la 2e dose). Une titration perdante, elle, défère.
@@ -1388,10 +1252,10 @@ export const proposalGeneratorService = {
       }
     }
 
-    // 6quater. Émission GROUPÉE STYLO (S3e PR2, derrière `ENGINE_GROUPED_STYLO`) — single ET split alimentent
-    // `styloCandidates` (au plus 1 dose/run). UNE `SlotSetProposal` de forme STYLO (disposition de modalité
-    // ENTIÈRE, dose changée superposée, baseline injecté = même lecture ⇒ TOCTOU fermée). No-op si vide/dérivé.
-    if (groupedStylo && styloCandidates.length > 0) {
+    // 6quater. Émission GROUPÉE STYLO (S3e PR2 → S5 grouped-only) — single ET split alimentent `styloCandidates`
+    // (au plus 1 dose/run). UNE `SlotSetProposal` de forme STYLO (disposition de modalité ENTIÈRE, dose changée
+    // superposée, baseline injecté = même lecture ⇒ TOCTOU fermée). No-op si vide/dérivé.
+    if (styloCandidates.length > 0) {
       const res = await emitGroupedStyloBasal(patientId, styloCandidates, styloWindowDays, ctx)
       if (res.emitted) created++
     }
@@ -1435,37 +1299,10 @@ export const proposalGeneratorService = {
             .then(() => { flagged++ })
             .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket: isfBucket }, err as Error))
 
-        const persistIsf = async (cand: ProposalCandidate) => {
-          // Mode GROUPÉ (S3b-1) : collecte (émission différée après la boucle) ; sinon par-valeur immédiat.
-          if (groupedIsfIcr) {
-            isfCandidates.push({ startHour: slot.startHour, endHour: slot.endHour, cand })
-            return
-          }
-          try {
-            await adjustmentService.createEngineProposal({
-              patientId,
-              parameterType: "insulinSensitivityFactor",
-              proposedValue: cand.proposedValue,
-              expectedCurrentValue: cand.currentValue,
-              reason: cand.reason,
-              confidence: cand.confidence,
-              supportingEvents: cand.supportingEvents,
-              totalEventsConsidered: cand.totalEventsConsidered,
-              averageObservedValue: cand.averageObservedValue ?? null,
-              analysisPeriod: ISF_ANALYSIS_PERIOD,
-              timeSlotStartHour: slot.startHour,
-              timeSlotEndHour: slot.endHour,
-            }, ctx)
-            created++
-          } catch (err) {
-            const msg = (err as Error).message
-            if (EXPECTED_SKIP.has(msg)) {
-              logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket: isfBucket, failMode: msg })
-            } else {
-              logger.error("proposal-generator", "unexpected engine proposal error",
-                { patientId, bucket: isfBucket, failMode: "unexpected" }, err as Error)
-            }
-          }
+        // GROUPED-ONLY (S5) : collecte le candidat ISF (émission `SlotSetProposal` différée après la boucle) —
+        // la voie par-valeur `createEngineProposal` est retirée.
+        const persistIsf = (cand: ProposalCandidate) => {
+          isfCandidates.push({ startHour: slot.startHour, endHour: slot.endHour, cand })
         }
 
         // MATRICE deadband × nadir post-correction (US-2653, validé medical) :
@@ -1480,13 +1317,13 @@ export const proposalGeneratorService = {
             points.map((p) => ({ postGlucoseGl: p.postGlucoseGl, targetGl: p.targetGl, nadirGl: p.nadirGl ?? undefined })),
           )
           if (candidate) {
-            await persistIsf(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
+            persistIsf(candidate) // deadband (proportionnel, auto-limité → pas de cooldown)
           } else if (recurrent) {
             // Dans la bande + hypos post-correction récurrentes → hausse ISF FIXE +10 % (dé-escalade). Jugée
             // sur les nadirs POST-changement (Q6a) + plancher temporel.
             const de = analyzeIsfHypoDeescalation(slot, postNadirsGl)
             if (de && !isfWithinCooldown) {
-              await persistIsf(de)
+              persistIsf(de)
             } else if (severe) {
               await raiseIsfFlag() // dé-escalade bloquée (délai/post-changement) mais nadir SÉVÈRE → jamais tu (Q6b)
             }
@@ -1497,8 +1334,8 @@ export const proposalGeneratorService = {
       }
     }
 
-    // US-2663 (S3b-1) — émission GROUPÉE ISF (fenêtre ISF fixe 30 j, cf. `ISF_ANALYSIS_WINDOW_DAYS`).
-    if (groupedIsfIcr) {
+    // US-2663 (S3b-1 → S5 grouped-only) — émission GROUPÉE ISF (fenêtre ISF fixe 30 j, cf. `ISF_ANALYSIS_WINDOW_DAYS`).
+    {
       const res = await emitGroupedIsfIcr(patientId, "insulinSensitivityFactor", isfCandidates, ISF_ANALYSIS_WINDOW_DAYS, ctx)
       if (res.emitted) created++
     }
@@ -1536,16 +1373,14 @@ export const proposalGeneratorService = {
     })
     if (fixedSlots.length === 0) return EMPTY("noFixedDose")
 
-    // US-2663 (S3d PR2) — bascule RÉVERSIBLE de la dose fixe en émission GROUPÉE (flag DISTINCT).
-    const groupedFixedDose = getEnvBoolean("ENGINE_GROUPED_FIXED_DOSE") === true
     const fixedCandidates: CollectedFixedDoseCandidate[] = []
     // D2 (reco medical) — un `moment` portant ≥ 2 doses (usages distincts) a un signal glycémique NON attribuable
-    // à un usage → on N'AUTO-TITRE PAS ce moment en groupé (abandon). Comptage par moment (sur l'insuline active),
-    // calculé UNIQUEMENT en mode groupé (aucun travail sur la voie par-valeur, flag OFF).
+    // à un usage → on N'AUTO-TITRE PAS ce moment (abandon). Comptage par moment (sur l'insuline active). US-2663 S5 :
+    // grouped-only → toujours calculé (plus de voie par-valeur).
     const momentCount = new Map<DoseMoment, number>()
     const multiDoseAbandoned = new Set<DoseMoment>() // dé-doublonne le log d'abandon (2 slots/moment)
     const multiDoseHypoFlagged = new Set<DoseMoment>() // dé-doublonne le FLAG hypo (≥ 2 baisses/moment → 1 flag)
-    if (groupedFixedDose) for (const s of fixedSlots) momentCount.set(s.moment, (momentCount.get(s.moment) ?? 0) + 1)
+    for (const s of fixedSlots) momentCount.set(s.moment, (momentCount.get(s.moment) ?? 0) + 1)
 
     const patient = await prisma.patient.findFirst({
       where: { id: patientId, deletedAt: null },
@@ -1587,8 +1422,8 @@ export const proposalGeneratorService = {
           .catch((err) => logger.error("proposal-generator", "raise flag failed", { patientId, bucket }, err as Error))
 
       const persistFixed = async (cand: ProposalCandidate) => {
-        // Mode GROUPÉ (S3d PR2) : collecte (émission différée) ; sinon persistance par-valeur immédiate.
-        if (groupedFixedDose) {
+        // GROUPED-ONLY (S5) : collecte (émission `SlotSetProposal` dose fixe différée) — voie par-valeur retirée.
+        {
           // D2 — moment multi-doses : signal glycémique (creux pré-dose) NON attribuable à un usage → NE PAS
           // titrer à l'aveugle (abandon, laissé au médecin qui voit les doses au dossier).
           if ((momentCount.get(slot.moment) ?? 0) > 1) {
@@ -1612,31 +1447,6 @@ export const proposalGeneratorService = {
             return
           }
           fixedCandidates.push({ usage: slot.patientInsulin.usage, moment: slot.moment, cand })
-          return
-        }
-        try {
-          await adjustmentService.createEngineProposal({
-            patientId,
-            parameterType: "fixedDose",
-            moment: slot.moment,
-            proposedValue: cand.proposedValue,
-            expectedCurrentValue: cand.currentValue,
-            reason: cand.reason,
-            confidence: cand.confidence,
-            supportingEvents: cand.supportingEvents,
-            totalEventsConsidered: cand.totalEventsConsidered,
-            averageObservedValue: cand.averageObservedValue ?? null,
-            analysisPeriod,
-          }, ctx)
-          created++
-        } catch (err) {
-          const msg = (err as Error).message
-          if (EXPECTED_SKIP.has(msg)) {
-            logger.info("proposal-generator", "engine proposal skipped", { patientId, bucket, failMode: msg })
-          } else {
-            logger.error("proposal-generator", "unexpected engine proposal error",
-              { patientId, bucket, failMode: "unexpected" }, err as Error)
-          }
         }
       }
 
@@ -1669,9 +1479,9 @@ export const proposalGeneratorService = {
       }
     }
 
-    // US-2663 (S3d PR2) — émission GROUPÉE dose fixe (1 `SlotSetProposal` fixedDose couvrant les doses changées,
-    // moments multi-doses abandonnés). Fenêtre = `windowDays ?? 14` (jours, cf. `analysisPeriod`).
-    if (groupedFixedDose) {
+    // US-2663 (S3d PR2 → S5 grouped-only) — émission GROUPÉE dose fixe (1 `SlotSetProposal` fixedDose couvrant les
+    // doses changées, moments multi-doses abandonnés). Fenêtre = `windowDays ?? 14` (jours, cf. `analysisPeriod`).
+    {
       const res = await emitGroupedFixedDose(patientId, fixedCandidates, windowDays ?? 14, ctx)
       if (res.emitted) created++
     }
