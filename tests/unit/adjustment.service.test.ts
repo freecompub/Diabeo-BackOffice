@@ -38,12 +38,6 @@
 import { describe, it, expect, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
-// US-2651 — createManual/createProposal appellent resolveTreatmentMode (garde MDR nonInsulin).
-// Patient insuliné par défaut ici pour ne pas bloquer les cas nominaux.
-vi.mock("@/lib/services/treatment-mode.service", () => ({
-  treatmentModeService: { resolveTreatmentMode: vi.fn(async () => ({ mode: "basalBolus", coherent: true })) },
-}))
-
 import { adjustmentService } from "@/lib/services/adjustment.service"
 
 describe("adjustmentService", () => {

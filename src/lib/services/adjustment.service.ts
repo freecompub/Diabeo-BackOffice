@@ -42,14 +42,7 @@ export type CreateProposalInput = {
 }
 
 /**
- * Validate proposed parameter value against clinical bounds.
- * @private
- * @param {string} parameterType - Parameter type (insulinSensitivityFactor, insulinToCarbRatio, basalRate)
- * @param {number} value - Proposed value
- * @returns {boolean} True if value is within bounds
- */
-/**
- * Garde-fő fail-closed de l'application d'une proposition acceptée : si aucune ligne n'a
+ * Garde-fou fail-closed de l'application d'une proposition acceptée : si aucune ligne n'a
  * été écrite (`count === 0` — créneau supprimé/déplacé ou hors patient entre la proposition
  * et l'accept), lève `code` → rollback de la transaction, jamais d'« accepté + appliqué »
  * fantôme. Partagé par les 3 paramètres (ISF/ICR/basal) pour éviter la dérive.
@@ -73,6 +66,14 @@ export function reasonImpliesIncrease(reason: AdjustmentReason): boolean | null 
   return null
 }
 
+/**
+ * Valide une valeur proposée contre les bornes cliniques (re-vérification à l'application).
+ * @private
+ * @param parameterType Type de paramètre (`insulinSensitivityFactor`/`insulinToCarbRatio`/`basalRate`).
+ * @param value Valeur proposée.
+ * @param basalDoseKind Discriminateur de cible pour une basale STYLO (bornes U totales) vs pompe (U/h).
+ * @returns `true` si la valeur est dans les bornes.
+ */
 function validateProposedValue(
   parameterType: string,
   value: number,
@@ -183,7 +184,9 @@ async function resolveCurrentValue(
 }
 
 /**
- * Adjustment proposal service — CRUD and review workflow.
+ * Adjustment proposal service — read/registry & review workflow (grouped-only depuis US-2663 S5 :
+ * la voie d'ÉCRITURE par-valeur a été retirée ; ne subsistent que `list`/`summary`/`accept`/`reject`
+ * sur les propositions `AdjustmentProposal` existantes).
  * @namespace adjustmentService
  */
 

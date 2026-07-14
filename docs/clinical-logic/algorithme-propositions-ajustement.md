@@ -358,9 +358,12 @@ Le générateur **ne persiste plus par-valeur** : `createEngineProposal` et `cre
 Les garde-fous serveur historiques sont **répliqués au niveau de l'assemblage** (parité fonctionnelle) :
 frontière **nonInsulin** (MDR, `nonInsulinNoDose`), **plafonnement** des bornes (D1 — `clampProposed`
 **plafonne** au lieu de rejeter, `cappedToBound` en justification), `currentValue` **re-dérivé serveur**
-par créneau, cohérence `reason` ↔ signe du delta (`reasonDirectionMismatch`), `supportingEvents > 0`,
-**no-op** si rien ne change. L'invariant « 1 pending / (patient × paramètre) » est garanti par index
-unique partiel + supersession dans `createSetProposal`.
+par créneau, cohérence `reason` ↔ signe du delta (`reasonDirectionMismatch`), **no-op** si rien ne change.
+Le minimum d'observations (`supportingEvents > 0`) n'est PAS re-vérifié à l'assemblage : il est **garanti
+en amont** par la porte `≥ 3 événements` des analyseurs (`analyzeIsfSlot`/`analyzeIcrSlot`/`analyzeBasalTrend`/
+dose fixe renvoient `null` sous le seuil) et par les dé-escalades qui ne se déclenchent que sur hypos
+récurrentes (> 0 nadir). L'invariant « 1 pending / (patient × paramètre) » est garanti par index unique
+partiel + supersession dans `createSetProposal`.
 
 **Fenêtre snapshot→émission (validé medical, CAS par créneau)** : le candidat est calculé sur un snapshot.
 Si la base d'un créneau a **dérivé** entre l'analyse et l'émission, ce créneau est **abandonné** de la
@@ -375,7 +378,6 @@ les créneaux inchangés).
 - *Incohérence (`reasonDirectionMismatch`)* : candidat `reason = isfTooLow` (hausse attendue) mais
   `proposedValue 0,45 < currentValue live 0,50` (baisse) → créneau **écarté** (l'explication affichée serait
   fausse et l'application défairait le réglage du médecin).
-- *`supportingEvents = 0`* → créneau **écarté** : une proposition sans événement n'a aucun sens.
 
 ## 7. Validation `medical-domain-validator` (US-2651) — verdicts
 
