@@ -490,80 +490,79 @@ model User {
   pushNotifLogs                         PushNotificationLog[]
   pushScheduled                         PushScheduledNotification[]
   auditLogs                             AuditLog[]
-  reviewedProposals                     AdjustmentProposal[]              @relation("ReviewedBy")
-  proposedAdjustments                   AdjustmentProposal[]              @relation("ProposedBy")
-  slotSetProposalsProposed              SlotSetProposal[]                 @relation("SlotSetProposedBy")
-  slotSetProposalsReviewed              SlotSetProposal[]                 @relation("SlotSetReviewedBy")
-  reviewFlagsCreated                    ClinicalReviewFlag[]              @relation("ReviewFlagCreatedBy")
-  reviewFlagsResolved                   ClinicalReviewFlag[]              @relation("ReviewFlagResolvedBy")
-  prescribedInsulins                    PatientInsulin[]                  @relation("PrescribedInsulins")
+  reviewedProposals                     AdjustmentProposal[]           @relation("ReviewedBy")
+  proposedAdjustments                   AdjustmentProposal[]           @relation("ProposedBy")
+  slotSetProposalsProposed              SlotSetProposal[]              @relation("SlotSetProposedBy")
+  slotSetProposalsReviewed              SlotSetProposal[]              @relation("SlotSetReviewedBy")
+  reviewFlagsCreated                    ClinicalReviewFlag[]           @relation("ReviewFlagCreatedBy")
+  reviewFlagsResolved                   ClinicalReviewFlag[]           @relation("ReviewFlagResolvedBy")
+  prescribedInsulins                    PatientInsulin[]               @relation("PrescribedInsulins")
   mydiabbyCredential                    MyDiabbyCredential?
-  acknowledgedAlerts                    EmergencyAlert[]                  @relation("AlertAcknowledger")
-  resolvedAlerts                        EmergencyAlert[]                  @relation("AlertResolver")
-  emergencyActions                      EmergencyAlertAction[]            @relation("EmergencyActionPerformer")
-  statusTransitionsBy                   User[]                            @relation("UserStatusChangedBy")
-  statusTransitionedBy                  User?                             @relation("UserStatusChangedBy", fields: [statusChangedBy], references: [id], onDelete: Restrict)
-  triggeredBackups                      BackupLog[]                       @relation("BackupTriggeredBy")
-  managedServices                       HealthcareService[]               @relation("HealthcareServiceManager")
-  createdPatientTags                    PatientTag[]                      @relation("PatientTagCreator")
-  assignedPatientTags                   PatientTagAssignment[]            @relation("PatientTagAssigner")
+  acknowledgedAlerts                    EmergencyAlert[]               @relation("AlertAcknowledger")
+  resolvedAlerts                        EmergencyAlert[]               @relation("AlertResolver")
+  emergencyActions                      EmergencyAlertAction[]         @relation("EmergencyActionPerformer")
+  statusTransitionsBy                   User[]                         @relation("UserStatusChangedBy")
+  statusTransitionedBy                  User?                          @relation("UserStatusChangedBy", fields: [statusChangedBy], references: [id], onDelete: Restrict)
+  triggeredBackups                      BackupLog[]                    @relation("BackupTriggeredBy")
+  managedServices                       HealthcareService[]            @relation("HealthcareServiceManager")
+  createdPatientTags                    PatientTag[]                   @relation("PatientTagCreator")
+  assignedPatientTags                   PatientTagAssignment[]         @relation("PatientTagAssigner")
   // Groupe 3 — Équipe & Communication
-  createdMessageTemplates               MessageTemplate[]                 @relation("MessageTemplateCreator")
-  readReceipts                          ReadReceipt[]                     @relation("ReadReceiptUser")
-  verifiedProposalActualizations        AdjustmentProposalActualization[] @relation("ProposalActualizationVerifier")
-  verifiedSlotSetProposalActualizations SlotSetProposalActualization[]    @relation("SlotSetProposalActualizationVerifier")
-  consultationNotes                     ConsultationNote[]                @relation("ConsultationNoteAuthor")
-  delegationsRequested                  DelegationRequest[]               @relation("DelegationFrom")
-  delegationsToReview                   DelegationRequest[]               @relation("DelegationTo")
-  reviewedDelegations                   DelegationRequest[]               @relation("DelegationReviewer")
-  handoffsSent                          HandoffNote[]                     @relation("HandoffFrom")
-  handoffsReceived                      HandoffNote[]                     @relation("HandoffTo")
-  createdPatientGroups                  PatientGroup[]                    @relation("PatientGroupCreator")
-  assignedPatientGroups                 PatientGroupAssignment[]          @relation("PatientGroupAssigner")
-  invoicedTeleconsultActes              TeleconsultationActe[]            @relation("TeleconsultInvoicer")
+  createdMessageTemplates               MessageTemplate[]              @relation("MessageTemplateCreator")
+  readReceipts                          ReadReceipt[]                  @relation("ReadReceiptUser")
+  verifiedSlotSetProposalActualizations SlotSetProposalActualization[] @relation("SlotSetProposalActualizationVerifier")
+  consultationNotes                     ConsultationNote[]             @relation("ConsultationNoteAuthor")
+  delegationsRequested                  DelegationRequest[]            @relation("DelegationFrom")
+  delegationsToReview                   DelegationRequest[]            @relation("DelegationTo")
+  reviewedDelegations                   DelegationRequest[]            @relation("DelegationReviewer")
+  handoffsSent                          HandoffNote[]                  @relation("HandoffFrom")
+  handoffsReceived                      HandoffNote[]                  @relation("HandoffTo")
+  createdPatientGroups                  PatientGroup[]                 @relation("PatientGroupCreator")
+  assignedPatientGroups                 PatientGroupAssignment[]       @relation("PatientGroupAssigner")
+  invoicedTeleconsultActes              TeleconsultationActe[]         @relation("TeleconsultInvoicer")
   // Groupe 5 — Insuline & Repas
-  createdInsulinAdjustmentTemplates     InsulinAdjustmentTemplate[]       @relation("InsulinAdjustmentTemplateCreator")
-  validatedDiabetesEvents               DiabetesEvent[]                   @relation("DiabetesEventValidator")
-  uploadedMealPhotos                    MealPhoto[]                       @relation("MealPhotoUploader")
+  createdInsulinAdjustmentTemplates     InsulinAdjustmentTemplate[]    @relation("InsulinAdjustmentTemplateCreator")
+  validatedDiabetesEvents               DiabetesEvent[]                @relation("DiabetesEventValidator")
+  uploadedMealPhotos                    MealPhoto[]                    @relation("MealPhotoUploader")
   // Groupe 8 — RDV
-  createdMemberUnavailabilities         MemberUnavailability[]            @relation("MemberUnavailabilityCreator")
+  createdMemberUnavailabilities         MemberUnavailability[]         @relation("MemberUnavailabilityCreator")
   // Groupe 8 — i18n & Interopérabilité (Batch 1)
-  createdCountryCurrencies              CountryCurrency[]                 @relation("CountryCurrencyCreator")
-  createdCountryTaxRules                CountryTaxRule[]                  @relation("CountryTaxRuleCreator")
-  createdHealthcareRegulations          HealthcareRegulation[]            @relation("HealthcareRegulationCreator")
-  createdFhirInteroperability           FhirInteroperability[]            @relation("FhirInteroperabilityCreator")
-  createdFhirAllowedSystems             FhirAllowedSystem[]               @relation("FhirAllowedSystemCreator")
+  createdCountryCurrencies              CountryCurrency[]              @relation("CountryCurrencyCreator")
+  createdCountryTaxRules                CountryTaxRule[]               @relation("CountryTaxRuleCreator")
+  createdHealthcareRegulations          HealthcareRegulation[]         @relation("HealthcareRegulationCreator")
+  createdFhirInteroperability           FhirInteroperability[]         @relation("FhirInteroperabilityCreator")
+  createdFhirAllowedSystems             FhirAllowedSystem[]            @relation("FhirAllowedSystemCreator")
   // Groupe 10 Mirror V1 — Batches A+B
-  createdConfigVersions                 ConfigVersion[]                   @relation("ConfigVersionCreator")
-  validatedConfigVersions               ConfigVersion[]                   @relation("ConfigVersionValidator")
-  createdAlertThresholdTemplates        AlertThresholdTemplate[]          @relation("AlertThresholdTemplateCreator")
-  acknowledgedRiskScores                PatientRiskScore[]                @relation("PatientRiskScoreAcknowledger")
+  createdConfigVersions                 ConfigVersion[]                @relation("ConfigVersionCreator")
+  validatedConfigVersions               ConfigVersion[]                @relation("ConfigVersionValidator")
+  createdAlertThresholdTemplates        AlertThresholdTemplate[]       @relation("AlertThresholdTemplateCreator")
+  acknowledgedRiskScores                PatientRiskScore[]             @relation("PatientRiskScoreAcknowledger")
   // Groupe 7 Batch 1 — Facturation (US-2103/2105/2107)
-  createdInvoices                       Invoice[]                         @relation("InvoiceCreator")
+  createdInvoices                       Invoice[]                      @relation("InvoiceCreator")
   // Groupe 9 — Admin & Ops (US-2137 DataBreach)
-  declaredDataBreaches                  DataBreach[]                      @relation("DataBreachDeclarer")
+  declaredDataBreaches                  DataBreach[]                   @relation("DataBreachDeclarer")
   // US-2076 scope A — Messagerie sécurisée 1-to-1
-  messagesSent                          Message[]                         @relation("MessageSender")
-  messagesReceived                      Message[]                         @relation("MessageRecipient")
+  messagesSent                          Message[]                      @relation("MessageSender")
+  messagesReceived                      Message[]                      @relation("MessageRecipient")
   // Groupe 4 — Devices & Sync (US-2091/2092)
-  revokedPatientDevices                 PatientDevice[]                   @relation("PatientDeviceRevoker")
-  createdSupportedDevices               SupportedDevice[]                 @relation("SupportedDeviceCreator")
+  revokedPatientDevices                 PatientDevice[]                @relation("PatientDeviceRevoker")
+  createdSupportedDevices               SupportedDevice[]              @relation("SupportedDeviceCreator")
   // US-2026 H5 review — Forensique : qui a saisi cet INS / pour qui.
-  insSetByUser                          User?                             @relation("InsSetter", fields: [insSetByUserId], references: [id], onDelete: SetNull)
-  insSetForUsers                        User[]                            @relation("InsSetter")
+  insSetByUser                          User?                          @relation("InsSetter", fields: [insSetByUserId], references: [id], onDelete: SetNull)
+  insSetForUsers                        User[]                         @relation("InsSetter")
   /// US-2603 — switcher patient : dossiers récemment vus / épinglés par ce PS.
   recentlyViewedPatients                RecentlyViewedPatient[]
   pinnedPatients                        PinnedPatient[]
   /// US-2605 — séances de revue ouvertes + comptes rendus rédigés par ce PS.
-  encountersOpened                      Encounter[]                       @relation("EncounterOpener")
-  consultationReportsAuthored           ConsultationReportAddendum[]      @relation("ConsultationReportAuthor")
+  encountersOpened                      Encounter[]                    @relation("EncounterOpener")
+  consultationReportsAuthored           ConsultationReportAddendum[]   @relation("ConsultationReportAuthor")
   /// US-2610/F4 — appartenances scopées (N-N user↔service) porteuses des capacités Q1/Q2.
   memberships                           HealthcareMembership[]
   /// F4 — preuves d'enregistrement PS (multi-pays) + preuves vérifiées par ce PS.
-  professionalRegistrations             ProfessionalRegistration[]        @relation("RegistrationSubject")
-  professionalRegistrationsVerified     ProfessionalRegistration[]        @relation("RegistrationVerifier")
+  professionalRegistrations             ProfessionalRegistration[]     @relation("RegistrationSubject")
+  professionalRegistrationsVerified     ProfessionalRegistration[]     @relation("RegistrationVerifier")
   /// F2 — politiques de vérification posées par ce SYSTEM_ADMIN.
-  verificationPoliciesSet               VerificationPolicy[]              @relation("VerificationPolicySetter")
+  verificationPoliciesSet               VerificationPolicy[]           @relation("VerificationPolicySetter")
 
   /// US-2026 — INS unique anti-doublon RNIPP. PG default NULLS DISTINCT
   /// autorise plusieurs NULL (PS / ADMIN sans INS renseigne).
@@ -789,9 +788,8 @@ model Patient {
   handoffNotes           HandoffNote[]
   /// US-2088 — Groupes-cohortes équipe.
   groupAssignments       PatientGroupAssignment[]
-  /// US-2065 — Accusés patient sur AdjustmentProposal (review PR #390 H10).
-  proposalAcks           AdjustmentProposalAck[]
-  /// US-2663 (S5/c4) — Accusés patient sur SlotSetProposal (proposition GROUPÉE, grouped-only).
+  /// US-2663 (S5/c4) — Accusés patient sur SlotSetProposal (proposition GROUPÉE, grouped-only ;
+  /// l'accusé par-valeur `AdjustmentProposalAck` a été retiré en US-2663 S6).
   slotSetProposalAcks    SlotSetProposalAck[]
   /// US-2057 — Photos repas (review PR #391 H5 FK explicite).
   mealPhotos             MealPhoto[]
@@ -1483,16 +1481,14 @@ model AdjustmentProposal {
   reviewedBy            Int?                @map("reviewed_by")
   createdAt             DateTime            @default(now()) @map("created_at") @db.Timestamptz()
 
-  patient       Patient                          @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  reviewer      User?                            @relation("ReviewedBy", fields: [reviewedBy], references: [id])
+  patient       Patient        @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  reviewer      User?          @relation("ReviewedBy", fields: [reviewedBy], references: [id])
   // US-2646 — auteur de la proposition (patient/nurse/doctor). onDelete: SetNull pour
   // préserver la ligne (traçabilité) après suppression RGPD de l'auteur ; le rôle reste porté par `source`.
-  proposer      User?                            @relation("ProposedBy", fields: [proposedByUserId], references: [id], onDelete: SetNull)
-  pumpBasalSlot PumpBasalSlot?                   @relation(fields: [pumpBasalSlotId], references: [id])
-  /// US-2065 — accusé patient (1:1).
-  ack           AdjustmentProposalAck?
-  /// US-2066 — actualisation effective (1:1).
-  actualization AdjustmentProposalActualization?
+  proposer      User?          @relation("ProposedBy", fields: [proposedByUserId], references: [id], onDelete: SetNull)
+  pumpBasalSlot PumpBasalSlot? @relation(fields: [pumpBasalSlotId], references: [id])
+  // US-2065/2066 — accusé/actualisation PAR-VALEUR retirés (US-2663 S6, grouped-only) : portés sur
+  // `SlotSetProposal` (`SlotSetProposalAck`/`SlotSetProposalActualization`).
 
   @@index([patientId, status, createdAt])
   @@map("adjustment_proposals")
@@ -2767,50 +2763,6 @@ model ReadReceipt {
   @@unique([resource, resourceId, userId])
   @@index([resource, resourceId])
   @@map("read_receipts")
-}
-
-/// US-2065 — Accusé patient sur une AdjustmentProposal : tracking
-/// lecture / acceptation / rejet côté patient (mobile app).
-model AdjustmentProposalAck {
-  id           Int       @id @default(autoincrement())
-  proposalId   String    @unique @map("proposal_id")
-  patientId    Int       @map("patient_id")
-  acknowledged Boolean   @default(false)
-  accepted     Boolean?
-  readAt       DateTime? @map("read_at") @db.Timestamptz()
-  respondedAt  DateTime? @map("responded_at") @db.Timestamptz()
-  /// Commentaire libre patient (max 500 char). Chiffré AES-256-GCM si non-null.
-  comment      String?
-
-  proposal AdjustmentProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
-  /// FK explicite vers Patient (review PR #390 H10) : empêche le drift
-  /// `patient_id` ↔ proposal.patient_id et cascade le soft-delete RGPD.
-  patient  Patient            @relation(fields: [patientId], references: [id], onDelete: Cascade)
-
-  @@index([patientId])
-  @@map("adjustment_proposal_acks")
-}
-
-/// US-2066 — Vérification que l'ajustement proposé a été appliqué dans le
-/// monde réel (sur le device). `effectiveAt` = quand le réglage a pris
-/// effet (peut différer du `respondedAt` patient).
-model AdjustmentProposalActualization {
-  id          Int       @id @default(autoincrement())
-  proposalId  String    @unique @map("proposal_id")
-  effectiveAt DateTime? @map("effective_at") @db.Timestamptz()
-  /// Source de vérification : "device-sync" / "manual-ps" / "patient-confirmed".
-  verifiedVia String    @map("verified_via") @db.VarChar(40)
-  /// PS ayant confirmé (NULL si vérification auto via sync device).
-  verifiedBy  Int?      @map("verified_by")
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-
-  proposal AdjustmentProposal @relation(fields: [proposalId], references: [id], onDelete: Cascade)
-  verifier User?              @relation("ProposalActualizationVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull)
-
-  /// review PR #390 L7 — index sur la FK SetNull pour éviter le seq-scan
-  /// quand un User est anonymisé.
-  @@index([verifiedBy])
-  @@map("adjustment_proposal_actualizations")
 }
 
 /// US-2663 (S5/c4) — Accusé patient sur une SlotSetProposal (proposition GROUPÉE).
