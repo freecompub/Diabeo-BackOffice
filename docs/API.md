@@ -542,7 +542,6 @@ const cgmSchema = z.object({
       "id": 1234,
       "timestamp": "2026-03-31T14:23:00Z",
       "valueGl": 1.35,
-      "valueMgdl": 135,
       "isManual": false,
       "deviceId": "dexcom-001"
     },

@@ -53,7 +53,6 @@ interface RadarData {
   period: TimePeriod
   /** Average over the full period */
   average: number
-  unit: string
   points: DayDataPoint[]
 }
 
@@ -88,6 +87,9 @@ interface RadarChartSVGProps {
   fillColor: string
   strokeColor: string
   chartLabel: string
+  /** Formate une valeur de point selon l'unité de la métrique (décimales g/L 2 /
+   *  mmol/L 1 / mg/dL 0 ; % → 1). Défaut : 1 décimale (métriques %). */
+  formatValue?: (v: number) => string
 }
 
 function RadarChartSVG({
@@ -97,6 +99,7 @@ function RadarChartSVG({
   fillColor,
   strokeColor,
   chartLabel,
+  formatValue = (v: number) => v.toFixed(1),
 }: RadarChartSVGProps) {
   const axisCount = points.length
   const angleStep = 360 / axisCount
@@ -203,7 +206,7 @@ function RadarChartSVG({
             }}
             tabIndex={0}
             role="button"
-            aria-label={`${dayLabels[i]}: ${p.value.toFixed(1)}`}
+            aria-label={`${dayLabels[i]}: ${formatValue(p.value)}`}
             style={{ cursor: "pointer", outline: "none" }}
           >
             <circle
@@ -236,7 +239,7 @@ function RadarChartSVG({
                   fill="white"
                   fontWeight={600}
                 >
-                  {p.value.toFixed(1)}
+                  {formatValue(p.value)}
                 </text>
               </g>
             )}
@@ -311,7 +314,6 @@ export default function RadarPage() {
         // Map API response to radar data shape
         const rawPoints: DayDataPoint[] = json.weeklyRadar ?? []
         const average = json.average ?? 0
-        const config = metricConfig[metric]
 
         // Pad missing days with 0
         const filledPoints: DayDataPoint[] = DAYS.map((day, i) => {
@@ -323,7 +325,6 @@ export default function RadarPage() {
           metric,
           period,
           average,
-          unit: config.unit,
           points: filledPoints,
         })
       } catch {
@@ -353,6 +354,19 @@ export default function RadarPage() {
     ? data.points.map((p) => ({ ...p, value: toGlucoseDisplay(p.value), delta: toGlucoseDisplay(p.delta) }))
     : []
   const displayAverage = data ? toGlucoseDisplay(data.average) : 0
+  // Précision d'affichage selon l'unité de la métrique (F1) : g/L 2 déc.,
+  // mmol/L 1 déc., mg/dL entier ; métriques % (TIR/CV) → 1 déc. (inchangé).
+  const metricDecimals = isGlucoseMetric
+    ? glucoseUnit.code === 3
+      ? 2
+      : glucoseUnit.code === 5
+        ? 1
+        : 0
+    : 1
+  const fmtMetric = (v: number) => v.toFixed(metricDecimals)
+  // Séparateur valeur/unité : espace pour une glycémie ("1,54 g/L"), collé pour
+  // un pourcentage ("45.0%") — convention d'affichage (F3).
+  const unitSeparator = isGlucoseMetric ? " " : ""
 
   return (
     <>
@@ -411,7 +425,7 @@ export default function RadarPage() {
               </span>
               {data && (
                 <span className="ms-auto text-sm text-muted-foreground">
-                  {t("average")}: <strong>{displayAverage.toFixed(1)}{displayUnit}</strong>
+                  {t("average")}: <strong>{fmtMetric(displayAverage)}{unitSeparator}{displayUnit}</strong>
                 </span>
               )}
             </div>
@@ -430,6 +444,7 @@ export default function RadarPage() {
                   <RadarChartSVG
                     points={displayPoints}
                     maxValue={displayMaxValue}
+                    formatValue={fmtMetric}
                     dayLabels={dayLabels}
                     fillColor={config.color}
                     strokeColor={config.stroke}
@@ -484,7 +499,7 @@ export default function RadarPage() {
                         {dayLabels[i]}
                       </td>
                       <td className="py-2 pe-4 text-end tabular-nums text-foreground">
-                        {p.value.toFixed(1)}
+                        {fmtMetric(p.value)}
                       </td>
                       <td
                         className={cn(
@@ -497,7 +512,7 @@ export default function RadarPage() {
                         )}
                       >
                         {p.delta > 0 ? "+" : ""}
-                        {p.delta.toFixed(1)}
+                        {fmtMetric(p.delta)}
                       </td>
                     </tr>
                   ))}
@@ -508,7 +523,7 @@ export default function RadarPage() {
                       {t("tableAverage")}
                     </td>
                     <td className="py-2 pe-4 text-end text-xs font-bold tabular-nums text-foreground">
-                      {displayAverage.toFixed(1)}
+                      {fmtMetric(displayAverage)}
                     </td>
                     <td className="py-2 text-end text-xs text-muted-foreground">—</td>
                   </tr>
