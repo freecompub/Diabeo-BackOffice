@@ -4,9 +4,9 @@
  * Covers (selected behaviours from 44 findings):
  *  - C1/C2/C3/C4 — route-level RBAC checks (covered in route tests, not here)
  *  - C5 — `delegationRequest.respond` audits `DELEGATION_APPROVED`/`REJECTED`
- *  - H2 — `proposalAck` propagates auditUserId
+ *  - H2/H4/L8 (accusé/actualisation PAR-VALEUR) — RETIRÉS ici (US-2663 S6, voie par-valeur supprimée) ;
+ *    couverture équivalente portée sur la voie GROUPÉE dans `slot-set-proposal-ack.service.test.ts`.
  *  - H3 — `markInvoiced` rejects double-invoicing
- *  - H4 — `proposalActualization.record` rejects source mismatch
  *  - H5 — `delegationRequest.create` rejects PHI-shaped payload + over-size
  *  - H6 — `handoffNote.listInbox` emits audit READ
  *  - H7 — `memberAbsence.listForMember` requires service membership
@@ -15,7 +15,6 @@
  *  - M2 — `consultationNote.create` rejects appointment cross-patient mismatch
  *  - M3 — `memberAbsence.create` rejects member without service
  *  - M11 — self-delegation rejected
- *  - L8 — `proposalAck.respond` rejects oversized comment
  */
 import { describe, it, expect, beforeEach } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
