@@ -252,140 +252,28 @@ export const readReceiptService = {
 }
 
 // ─────────────────────────────────────────────────────────────
-// US-2065 — Patient acknowledgement of an AdjustmentProposal
+// US-2065 — Accusé patient. La voie PAR-VALEUR (`proposalAckService` sur `AdjustmentProposal`) a été
+// RETIRÉE (US-2663 S6, grouped-only) ; seul subsiste `ACK_COMMENT_MAX`, partagé avec
+// `slotSetProposalAckService` (proposition GROUPÉE, ci-dessous).
 // ─────────────────────────────────────────────────────────────
 
 const ACK_COMMENT_MAX = 500
 
-export const proposalAckService = {
-  async markRead(
-    proposalId: string,
-    patientId: number,
-    auditUserId: number,         // H2 — propagated from route
-    ctx?: AuditContext,
-  ) {
-    const ack = await prisma.adjustmentProposalAck.upsert({
-      where: { proposalId },
-      create: { proposalId, patientId, acknowledged: true, readAt: new Date() },
-      update: { acknowledged: true, readAt: new Date() },
-      select: { id: true, readAt: true },
-    })
-    await auditService.log({
-      userId: auditUserId,
-      action: "READ", resource: "PROPOSAL_ACK", resourceId: proposalId,
-      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-      metadata: { patientId, proposalId, kind: "read" },
-    })
-    return ack
-  },
-
-  async respond(
-    proposalId: string, patientId: number,
-    decision: { accepted: boolean; comment?: string },
-    auditUserId: number,         // H2
-    ctx?: AuditContext,
-  ) {
-    // L8 — defensive length check at the service layer too.
-    if (decision.comment && decision.comment.length > ACK_COMMENT_MAX) {
-      throw new ValidationError("comment")
-    }
-    const encrypted = decision.comment ? encryptField(decision.comment) : null
-    const ack = await prisma.adjustmentProposalAck.upsert({
-      where: { proposalId },
-      create: {
-        proposalId, patientId,
-        acknowledged: true, readAt: new Date(),
-        accepted: decision.accepted, respondedAt: new Date(),
-        comment: encrypted,
-      },
-      update: {
-        accepted: decision.accepted, respondedAt: new Date(),
-        comment: encrypted,
-      },
-      select: { id: true, accepted: true, respondedAt: true },
-    })
-    await auditService.log({
-      userId: auditUserId,
-      action: "UPDATE", resource: "PROPOSAL_ACK", resourceId: proposalId,
-      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-      metadata: { patientId, proposalId, accepted: decision.accepted, kind: "respond" },
-    })
-    return ack
-  },
-}
-
 // ─────────────────────────────────────────────────────────────
-// US-2066 — Real-world actualization (H4 guard against overwrite, M8 literal)
+// US-2066 — Actualisation (application réelle). La voie PAR-VALEUR (`proposalActualizationService` sur
+// `AdjustmentProposal`) a été RETIRÉE (US-2663 S6) ; seuls subsistent `VERIFY_VIA_VALUES`/`VerifyVia`,
+// partagés avec `slotSetProposalActualizationService` (proposition GROUPÉE, ci-dessous).
 // ─────────────────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- used via `typeof VERIFY_VIA_VALUES` in the type export below
 const VERIFY_VIA_VALUES = ["device-sync", "manual-ps", "patient-confirmed"] as const
 export type VerifyVia = typeof VERIFY_VIA_VALUES[number]
 
-export const proposalActualizationService = {
-  async record(
-    proposalId: string,
-    input: { verifiedVia: VerifyVia; effectiveAt?: Date },
-    auditUserId: number,
-    ctx?: AuditContext,
-  ) {
-    return prisma.$transaction(async (tx) => {
-      const proposal = await tx.adjustmentProposal.findUnique({
-        where: { id: proposalId }, select: { patientId: true },
-      })
-      if (!proposal) throw new NotFoundError()
-
-      // H4 — refuse to silently overwrite a prior actualization. Allow re-record
-      // only if same source (`device-sync` re-sync is idempotent and OK).
-      const existing = await tx.adjustmentProposalActualization.findUnique({
-        where: { proposalId }, select: { verifiedVia: true },
-      })
-      if (existing && existing.verifiedVia !== input.verifiedVia) {
-        throw new ValidationError("alreadyActualized")
-      }
-
-      const row = await tx.adjustmentProposalActualization.upsert({
-        where: { proposalId },
-        create: {
-          proposalId,
-          verifiedVia: input.verifiedVia,
-          effectiveAt: input.effectiveAt ?? new Date(),
-          verifiedBy: input.verifiedVia === "device-sync" ? null : auditUserId,
-        },
-        update: {
-          effectiveAt: input.effectiveAt ?? new Date(),
-        },
-      })
-      await auditService.logWithTx(tx, {
-        userId: auditUserId,
-        action: existing ? "UPDATE" : "CREATE",
-        resource: "PROPOSAL_ACTUALIZATION",
-        resourceId: proposalId,
-        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
-        metadata: {
-          patientId: proposal.patientId,
-          proposalId, verifiedVia: input.verifiedVia,
-        },
-      })
-      return row
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
-  },
-
-  /**
-   * Convenience for routes: returns the patient that owns a proposal (used by
-   * the route to RBAC-check `canAccessPatient` before calling `record`).
-   */
-  async getProposalPatientId(proposalId: string): Promise<number | null> {
-    const p = await prisma.adjustmentProposal.findUnique({
-      where: { id: proposalId }, select: { patientId: true },
-    })
-    return p?.patientId ?? null
-  },
-}
 
 // ─────────────────────────────────────────────────────────────
 // US-2663 (S5/c4) — Accusé patient sur une SlotSetProposal (proposition GROUPÉE)
-// Port grouped-only de `proposalAckService` (US-2065). Décision produit D3 : 1 accusé
+// Port grouped-only de l'ex-`proposalAckService` (US-2065, voie par-valeur retirée en US-2663 S6).
+// Décision produit D3 : 1 accusé
 // = jeu entier (relation 1:1 via `slotSetProposalId @unique`). Sémantique/audit identiques
 // (resource `PROPOSAL_ACK`, `metadata.model = "slotSet"` pour distinguer en forensics).
 // ─────────────────────────────────────────────────────────────
@@ -451,7 +339,8 @@ export const slotSetProposalAckService = {
 
 // ─────────────────────────────────────────────────────────────
 // US-2663 (S5/c4) — Actualisation (application réelle) d'une SlotSetProposal
-// Port grouped-only de `proposalActualizationService` (US-2066, garde H4 anti-écrasement).
+// Port grouped-only de l'ex-`proposalActualizationService` (US-2066, garde H4 anti-écrasement ;
+// voie par-valeur retirée en US-2663 S6).
 // ─────────────────────────────────────────────────────────────
 
 export const slotSetProposalActualizationService = {

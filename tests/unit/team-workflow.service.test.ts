@@ -4,9 +4,9 @@
  * Covers (selected behaviours from 44 findings):
  *  - C1/C2/C3/C4 — route-level RBAC checks (covered in route tests, not here)
  *  - C5 — `delegationRequest.respond` audits `DELEGATION_APPROVED`/`REJECTED`
- *  - H2 — `proposalAck` propagates auditUserId
+ *  - H2/H4/L8 (accusé/actualisation PAR-VALEUR) — RETIRÉS ici (US-2663 S6, voie par-valeur supprimée) ;
+ *    couverture équivalente portée sur la voie GROUPÉE dans `slot-set-proposal-ack.service.test.ts`.
  *  - H3 — `markInvoiced` rejects double-invoicing
- *  - H4 — `proposalActualization.record` rejects source mismatch
  *  - H5 — `delegationRequest.create` rejects PHI-shaped payload + over-size
  *  - H6 — `handoffNote.listInbox` emits audit READ
  *  - H7 — `memberAbsence.listForMember` requires service membership
@@ -15,15 +15,12 @@
  *  - M2 — `consultationNote.create` rejects appointment cross-patient mismatch
  *  - M3 — `memberAbsence.create` rejects member without service
  *  - M11 — self-delegation rejected
- *  - L8 — `proposalAck.respond` rejects oversized comment
  */
 import { describe, it, expect, beforeEach } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 import {
   messageTemplateService,
   readReceiptService,
-  proposalAckService,
-  proposalActualizationService,
   consultationNoteService,
   teleconsultActeService,
   delegationRequestService,
@@ -69,54 +66,6 @@ describe("readReceiptService (H9 — resource access check)", () => {
     prismaMock.handoffNote.findFirst.mockResolvedValue(null)
     await expect(readReceiptService.markRead("HANDOFF_NOTE", 1, 99))
       .rejects.toBeInstanceOf(ForbiddenError)
-  })
-})
-
-describe("proposalAckService (H2 — auditUserId propagation, L8 — length)", () => {
-  it("audits markRead with the caller userId, not null", async () => {
-    prismaMock.adjustmentProposalAck.upsert.mockResolvedValue({
-      id: 1, readAt: new Date(),
-    } as any)
-    await proposalAckService.markRead("abc", 7, 999 /* auditUserId */)
-    const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-    expect(audit.userId).toBe(999)
-  })
-  it("rejects oversized comment in respond (L8)", async () => {
-    await expect(
-      proposalAckService.respond("abc", 7, { accepted: true, comment: "x".repeat(501) }, 999),
-    ).rejects.toBeInstanceOf(ValidationError)
-  })
-  it("encrypts comment + audits with caller userId", async () => {
-    prismaMock.adjustmentProposalAck.upsert.mockResolvedValue({
-      id: 1, accepted: true, respondedAt: new Date(),
-    } as any)
-    await proposalAckService.respond("abc", 7, { accepted: true, comment: "OK" }, 999)
-    const upsertArgs = prismaMock.adjustmentProposalAck.upsert.mock.calls[0][0] as any
-    expect(upsertArgs.create.comment).not.toBe("OK")
-    const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-    expect(audit.userId).toBe(999)
-  })
-})
-
-describe("proposalActualizationService (H4 — overwrite guard)", () => {
-  it("rejects record() when prior actualization has different verifiedVia", async () => {
-    prismaMock.adjustmentProposal.findUnique.mockResolvedValue({ patientId: 7 } as any)
-    prismaMock.adjustmentProposalActualization.findUnique.mockResolvedValue({
-      verifiedVia: "device-sync",
-    } as any)
-    await expect(
-      proposalActualizationService.record("abc", { verifiedVia: "manual-ps" }, 9),
-    ).rejects.toBeInstanceOf(ValidationError)
-  })
-  it("allows idempotent re-record with same verifiedVia", async () => {
-    prismaMock.adjustmentProposal.findUnique.mockResolvedValue({ patientId: 7 } as any)
-    prismaMock.adjustmentProposalActualization.findUnique.mockResolvedValue({
-      verifiedVia: "device-sync",
-    } as any)
-    prismaMock.adjustmentProposalActualization.upsert.mockResolvedValue({} as any)
-    await proposalActualizationService.record("abc", { verifiedVia: "device-sync" }, 9)
-    const audit = prismaMock.auditLog.create.mock.calls.at(-1)![0].data as any
-    expect(audit.action).toBe("UPDATE")
   })
 })
 
@@ -506,44 +455,6 @@ describe("consultationNoteService — list happy path", () => {
         patientId: 7, authorId: 9, content: "x".repeat(8193),
       }),
     ).rejects.toBeInstanceOf(ValidationError)
-  })
-})
-
-describe("proposalActualizationService — getProposalPatientId helper", () => {
-  it("returns null when proposal missing", async () => {
-    prismaMock.adjustmentProposal.findUnique.mockResolvedValue(null)
-    const r = await proposalActualizationService.getProposalPatientId("abc")
-    expect(r).toBeNull()
-  })
-  it("returns patientId on hit", async () => {
-    prismaMock.adjustmentProposal.findUnique.mockResolvedValue({ patientId: 7 } as any)
-    const r = await proposalActualizationService.getProposalPatientId("abc")
-    expect(r).toBe(7)
-  })
-
-  it("record rejects when proposal missing", async () => {
-    prismaMock.adjustmentProposal.findUnique.mockResolvedValue(null)
-    await expect(
-      proposalActualizationService.record("abc", { verifiedVia: "device-sync" }, 9),
-    ).rejects.toBeInstanceOf(NotFoundError)
-  })
-
-  it("record device-sync sets verifiedBy=null", async () => {
-    prismaMock.adjustmentProposal.findUnique.mockResolvedValue({ patientId: 7 } as any)
-    prismaMock.adjustmentProposalActualization.findUnique.mockResolvedValue(null)
-    prismaMock.adjustmentProposalActualization.upsert.mockResolvedValue({} as any)
-    await proposalActualizationService.record("abc", { verifiedVia: "device-sync" }, 9)
-    const args = prismaMock.adjustmentProposalActualization.upsert.mock.calls[0][0] as any
-    expect(args.create.verifiedBy).toBeNull()
-  })
-
-  it("record manual-ps sets verifiedBy=auditUserId", async () => {
-    prismaMock.adjustmentProposal.findUnique.mockResolvedValue({ patientId: 7 } as any)
-    prismaMock.adjustmentProposalActualization.findUnique.mockResolvedValue(null)
-    prismaMock.adjustmentProposalActualization.upsert.mockResolvedValue({} as any)
-    await proposalActualizationService.record("abc", { verifiedVia: "manual-ps" }, 9)
-    const args = prismaMock.adjustmentProposalActualization.upsert.mock.calls[0][0] as any
-    expect(args.create.verifiedBy).toBe(9)
   })
 })
 
