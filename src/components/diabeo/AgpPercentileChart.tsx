@@ -277,7 +277,11 @@ export function AgpPercentileChart({
             aria-label={t("legendTargetAriaLabel")}
             role="img"
           />
-          {t("legendTarget", { low: targetLowMgdl, high: targetHighMgdl })}
+          {t("legendTarget", {
+            low: mgdlToDisplayValue(targetLowMgdl, displayCode),
+            high: mgdlToDisplayValue(targetHighMgdl, displayCode),
+            unit: unitLabel,
+          })}
         </span>
       </div>
 
@@ -285,7 +289,11 @@ export function AgpPercentileChart({
           Pattern aligned with CgmChart.tsx — required in a medical app. */}
       <table className="sr-only">
         <caption>
-          {t("tableCaption", { low: targetLowMgdl, high: targetHighMgdl })}
+          {t("tableCaption", {
+            low: mgdlToDisplayValue(targetLowMgdl, displayCode),
+            high: mgdlToDisplayValue(targetHighMgdl, displayCode),
+            unit: unitLabel,
+          })}
         </caption>
         <thead>
           <tr>
@@ -300,8 +308,9 @@ export function AgpPercentileChart({
         <tbody>
           {data.map((row) => {
             // Créneau sans relevé (percentiles null) → « — » (pas de 0 trompeur).
-            const cell = (v: number | null) =>
-              v === null ? "—" : t("valueMgdl", { value: Math.round(v) })
+            // Parité lecteur d'écran (WCAG 1.3.1) : même unité que le rendu visuel
+            // via `agpTooltipValue` (convertit + libelle selon `displayCode`).
+            const cell = (v: number | null) => agpTooltipValue(v, displayCode)
             return (
               <tr key={row.minute}>
                 <th scope="row">{row.hour}</th>

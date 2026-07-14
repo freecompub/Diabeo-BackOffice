@@ -1869,15 +1869,14 @@
     "legendBand2575AriaLabel": "Percentile band 25-75 (medium shade)",
     "legendMedian": "Median",
     "legendMedianAriaLabel": "Median line (50th percentile)",
-    "legendTarget": "Target {low}-{high} mg/dL",
+    "legendTarget": "Target {low}-{high} {unit}",
     "legendTargetAriaLabel": "Target glucose range",
     "median": "Median",
     "p10": "10th percentile",
     "p25": "25th percentile",
     "p75": "75th percentile",
     "p90": "90th percentile",
-    "tableCaption": "Ambulatory glucose profile — values per 15-minute interval over 7 days. Target {low}-{high} mg/dL.",
-    "valueMgdl": "{value} mg/dL"
+    "tableCaption": "Ambulatory glucose profile — values per 15-minute interval over 7 days. Target {low}-{high} {unit}."
   },
   "cgmChart": {
     "figureAriaLabel": "Glucose chart — {count} readings, target {low}-{high} {unit}",

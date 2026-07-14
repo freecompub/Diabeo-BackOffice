@@ -73,17 +73,25 @@ export function useGlucoseUnit(): UseGlucoseUnit {
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
+    let active = true
     const controller = new AbortController()
     fetch("/api/account/units", { signal: controller.signal })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data && typeof data === "object") setCode(normalizeCode(data.unitGlycemia))
+        if (active && data && typeof data === "object") setCode(normalizeCode(data.unitGlycemia))
       })
       .catch(() => {
         // Réseau/annulation → on garde le défaut mg/dL (fail-safe, pas de throw).
       })
-      .finally(() => setReady(true))
-    return () => controller.abort()
+      .finally(() => {
+        // Ne pas setState après démontage (l'abort rejette le fetch mais `finally`
+        // s'exécute quand même) — évite le bruit « update after unmount » en test.
+        if (active) setReady(true)
+      })
+    return () => {
+      active = false
+      controller.abort()
+    }
   }, [])
 
   const unit = codeToGlucoseUnit(code)

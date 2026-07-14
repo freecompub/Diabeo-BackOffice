@@ -341,9 +341,10 @@ export default function RadarPage() {
 
   // ADR #32 — conversion d'affichage de la métrique glycémie moyenne (stockée en
   // mg/dL) vers l'unité préférée. Faite AU RENDU (données brutes mg/dL conservées
-  // en state) : valeur ET maxValue converties par le MÊME facteur → la
-  // normalisation `value/maxValue` du radar reste exacte. Les métriques % (TIR/CV)
-  // ne sont pas des glycémies → inchangées.
+  // en state) : valeur ET maxValue converties par le MÊME facteur. La normalisation
+  // `value/maxValue` du radar reste exacte en g/L (÷100 linéaire) et mg/dL ; en
+  // mmol/L, chaque terme est arrondi à 1 décimale avant le ratio → dérive < 1 %,
+  // visuellement négligeable. Les métriques % (TIR/CV) ne sont pas des glycémies → inchangées.
   const isGlucoseMetric = metric === "averageGlucose"
   const toGlucoseDisplay = (v: number) => (isGlucoseMetric ? glucoseUnit.value(v) : v)
   const displayUnit = isGlucoseMetric ? glucoseUnit.label : config.unit
@@ -410,7 +411,7 @@ export default function RadarPage() {
               </span>
               {data && (
                 <span className="ms-auto text-sm text-muted-foreground">
-                  {t("average")}: <strong>{data.average.toFixed(1)}{data.unit}</strong>
+                  {t("average")}: <strong>{displayAverage.toFixed(1)}{displayUnit}</strong>
                 </span>
               )}
             </div>

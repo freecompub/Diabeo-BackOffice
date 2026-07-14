@@ -26,7 +26,7 @@ import { DiabetesEventType, type Pathology } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { decimalToNumber } from "@/lib/db/decimal"
 // Conversion d'unités : source de vérité unique = `@/lib/glucose/units` (ADR #32).
-import { glToMgdl } from "@/lib/glucose/units"
+import { glToMgdl, mgdlToGl } from "@/lib/glucose/units"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
 import { getCgmDefaults } from "@/lib/services/objectives.service"
 import { CGM_AGGREGATE_RANGE_GL, MEAL_TREND, CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
@@ -396,9 +396,9 @@ function computeCorrectionTrend(
     out.push({
       localHour: localHour(t0),
       dayIso: localDay(t0),
-      postGlucoseGl: postMgdl / 100,
+      postGlucoseGl: mgdlToGl(postMgdl),
       targetGl: b.targetGl,
-      nadirGl: nadirMgdl !== null ? nadirMgdl / 100 : null,
+      nadirGl: nadirMgdl !== null ? mgdlToGl(nadirMgdl) : null,
     })
   }
   return out
@@ -475,7 +475,7 @@ export const mealtimePattern = {
       inputCarbs: b.inputCarbsGrams != null ? decimalToNumber(b.inputCarbsGrams) : 0,
       iob: decimalToNumber(b.iobValue),
       inputGl: b.inputGlucoseGl != null ? decimalToNumber(b.inputGlucoseGl) : null,
-      targetGl: decimalToNumber(b.targetGlucoseMgdl) / 100,
+      targetGl: mgdlToGl(decimalToNumber(b.targetGlucoseMgdl)),
       wasCapped: b.wasCapped,
       extendedDurationHours: b.extendedDurationHours != null ? decimalToNumber(b.extendedDurationHours) : null,
       extendedImmediatePct: b.extendedImmediatePct != null ? decimalToNumber(b.extendedImmediatePct) : null,

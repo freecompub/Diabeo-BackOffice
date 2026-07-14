@@ -59,7 +59,7 @@ molaire ÷18,0182 n'apparaît **que** pour l'affichage mmol/L).
 | **Stockage BGM** | **une seule colonne** `glycemia_gl` `Decimal(6,4)`, **nullable** (la glycémie est une mesure *optionnelle* d'une entrée BGM — poids / HbA1c / tension seuls possibles) + `CHECK (glycemia_gl IS NULL OR glycemia_gl BETWEEN 0.20 AND 6.00)`. Colonne `glycemia_mgdl` **supprimée** (backfill `glycemia_gl = COALESCE(glycemia_gl, glycemia_mgdl/100)` avant `DROP`). |
 | **Conversion** | **module unique** `src/lib/glucose/units.ts` (pur, sans dépendance Prisma/Redis → importable client + serveur). Toute conversion `g/L↔mg/dL↔mmol/L` y transite. |
 | **Logique clinique** | **inchangée** (déjà g/L). Aucun seuil clinique touché. |
-| **Emergency** | conserve sa décision en mg/dL (seul décideur mg/dL) via le module de conversion — inchangé fonctionnellement. |
+| **Emergency** | conserve sa décision en mg/dL (seul décideur mg/dL) — inchangé fonctionnellement. Sa conversion `×100` utilise aujourd'hui une constante locale (`GL_TO_MGDL`) équivalente au module ; migration vers `glucose/units` = follow-up (logique clinique-interne, hors périmètre strict). |
 | **API** | contrat **g/L inchangé** en sortie CGM (`valueGl`). `POST …/glycemia` **n'accepte plus que `glycemiaGl`** (Zod 0,20–6,00) ; `GET …/glycemia` renvoie `glycemiaGl` seul. |
 | **Affichage** | conversion à la **présentation** selon `UserUnitPreferences.unitGlycemia` (3=g/L, 4=mg/dL, 5=mmol/L) via `formatGlucose()`. Fin des `round(valueGl*100)` dupliqués. |
 | **Export RGPD** | valeurs g/L **avec libellé d'unité explicite** (`"g/L"`). |
@@ -68,7 +68,8 @@ molaire ÷18,0182 n'apparaît **que** pour l'affichage mmol/L).
 
 Restent en **g/L** (faible volume, non concernés par le bug dual-unité). `GlucoseTarget.targetGlucose`,
 `DiabetesEvent`, `EmergencyAlert` restent en **mg/dL** (tables de décision/événement, hors flux de
-mesure) — îlots assumés, convertis à la frontière via le module.
+mesure) — îlots assumés, convertis à la frontière (via le module ou une constante
+locale équivalente `×100`).
 
 ---
 
@@ -76,7 +77,7 @@ mesure) — îlots assumés, convertis à la frontière via le module.
 
 **Positives**
 - Élimine le double-stockage BGM (racine du fail-open) et pose enfin les CHECK de bornes.
-- **Zéro migration** sur la table CGM partitionnée (gros volume) ; **zéro rupture de contrat API**.
+- **Zéro réécriture / repartitionnement de données** sur la table CGM partitionnée (gros volume) — S1 n'y ajoute qu'un `CHECK` (pas de rewrite de lignes) ; **zéro rupture de contrat API**.
 - Les ~30 seuils cliniques g/L restent **inchangés** → risque clinique minimal.
 - Conversion centralisée et testée (round-trip *lossless* verrouillé par test).
 - Affichage multi-unités (g/L / mg/dL / mmol/L) propre, piloté par la préférence patient.
@@ -108,6 +109,30 @@ mesure) — îlots assumés, convertis à la frontière via le module.
   périmètre.
 - **Conserver le dual-unité + garde de cohérence applicative** : ne supprime pas la classe de
   bug (deux sources de vérité), complexité pérenne.
+
+---
+
+## 6. Follow-ups (tracés, non bloquants pour cette PR)
+
+Issus de la review multi-agents (médical / sécurité HDS / a11y / code / archi) de la PR :
+
+- **`useGlucoseUnit` = 1 fetch par composant + flash mg/dL→g/L** (jusqu'à 4 fetchs parallèles
+  sur la fiche patient). Remonter la préférence dans un **Context/provider hydraté serveur**
+  (ou dédup SWR/React Query) — perf + cohérence d'affichage. **Rattacher à US-3248.** *(priorité la plus haute)*
+- **Îlots mg/dL non routés par le module** : `emergency.service` (`GL_TO_MGDL` local),
+  `insulin.service`, `adjustment.service`, `proposal-generator`, `overview-targets.ts` — conversions
+  clinique-interne au niveau des seuils/décisions. Migration optionnelle vers `glucose/units`.
+- **Composants `GlucoseBadge`/`GlucoseCard`** : leur `convertValue` duplique `formatGlucose`
+  (`/100`, `/18.0182`) — actuellement **non utilisés** (à nettoyer ou migrer si réactivés).
+- **`GlycemiaValue.convertValue`** : dédupliquer la table de précision + rendre locale-aware
+  (routage `Intl` comme le reste de l'app) au lieu de `toFixed`.
+- **Dashboard médecin** : `profile.hba1c`/`profile.cv` lus au niveau racine alors que l'API
+  `glycemic-profile` expose `metrics.coefficientOfVariation` et pas de `hba1c` top-level —
+  **bug pré-existant** (KPI potentiellement vides), hors périmètre unité.
+- **Audit RTL arabe** (traducteur natif / test lecteur d'écran) sur les libellés paramétrés
+  `{unit}`, et **tests SR** (NVDA/JAWS/VoiceOver) de l'annonce d'unité dynamique.
+- **Export RGPD** : décrypter `glycemiaEntries.mealDescription` (aligné sur les messages) —
+  lacune de portabilité pré-existante.
 
 ---
 

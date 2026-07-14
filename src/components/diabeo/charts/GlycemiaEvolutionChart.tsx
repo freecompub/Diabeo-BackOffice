@@ -179,7 +179,7 @@ export function GlycemiaEvolutionChart({
       {/* Chart */}
       <div
         role="img"
-        aria-label={`${t("glucoseEvolution")} — ${glucoseData.length} ${t("readings")}`}
+        aria-label={`${t("glucoseEvolution")} — ${glucoseData.length} ${t("readings")} (${unitLabel})`}
         className="h-[240px] sm:h-[300px] md:h-[360px]"
       >
         <ResponsiveContainer width="100%" height="100%">
@@ -367,11 +367,11 @@ export function GlycemiaEvolutionChart({
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-high" />
-          {tGlycemia("high")} (&gt;{toDisplay(thresholds.targetMax)})
+          {tGlycemia("high")} (&gt;{toDisplay(thresholds.targetMax)} {unitLabel})
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-low" />
-          {tGlycemia("low")} (&lt;{toDisplay(thresholds.low)})
+          {tGlycemia("low")} (&lt;{toDisplay(thresholds.low)} {unitLabel})
         </span>
         {displayOptions.showInsulin && insulinDoses.length > 0 && (
           <span className="flex items-center gap-1.5">

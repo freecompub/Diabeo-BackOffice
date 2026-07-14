@@ -6,9 +6,9 @@
 --     les lignes historiques mg/dL-only (`glycemia_gl` NULL & `glycemia_mgdl` présent).
 --
 -- ADDITIF & RÉVERSIBLE (aucune colonne supprimée ici — le DROP de `glycemia_mgdl`
--- et les contraintes NOT NULL/CHECK BGM arrivent en S4). Idempotent : rejouable
--- (`migrate deploy` ne wrappe pas le fichier dans une transaction unique).
--- Convention : 1 g/L = 100 mg/dL (jamais ×18).
+-- et le CHECK BGM arrivent en S4). Écrit pour être **idempotent / rejouable** (backfill
+-- gardé par `WHERE glycemia_gl IS NULL`, contrainte par `DROP IF EXISTS`) — sûr même
+-- après une reprise partielle. Convention : 1 g/L = 100 mg/dL (jamais ×18).
 -- ═══════════════════════════════════════════════════════════════
 
 -- 1) Backfill BGM : dériver g/L depuis mg/dL pour les entrées historiques mg/dL-only.

@@ -1869,15 +1869,14 @@
     "legendBand2575AriaLabel": "Bande percentile 25-75 (teinte moyenne)",
     "legendMedian": "Médiane",
     "legendMedianAriaLabel": "Ligne médiane (50ème percentile)",
-    "legendTarget": "Cible {low}-{high} mg/dL",
+    "legendTarget": "Cible {low}-{high} {unit}",
     "legendTargetAriaLabel": "Zone glycémique cible",
     "median": "Médiane",
     "p10": "10ᵉ percentile",
     "p25": "25ᵉ percentile",
     "p75": "75ᵉ percentile",
     "p90": "90ᵉ percentile",
-    "tableCaption": "Profil ambulatoire de glycémie — valeurs par tranche de 15 minutes sur 7 jours. Cible {low}-{high} mg/dL.",
-    "valueMgdl": "{value} mg/dL"
+    "tableCaption": "Profil ambulatoire de glycémie — valeurs par tranche de 15 minutes sur 7 jours. Cible {low}-{high} {unit}."
   },
   "cgmChart": {
     "figureAriaLabel": "Graphique glycémique — {count} mesures, cible {low}-{high} {unit}",

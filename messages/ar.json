@@ -1869,15 +1869,14 @@
     "legendBand2575AriaLabel": "نطاق المئين 25-75 (درجة متوسطة)",
     "legendMedian": "الوسيط",
     "legendMedianAriaLabel": "خط الوسيط (المئين الخمسون)",
-    "legendTarget": "الهدف {low}-{high} mg/dL",
+    "legendTarget": "الهدف {low}-{high} {unit}",
     "legendTargetAriaLabel": "النطاق المستهدف للجلوكوز",
     "median": "الوسيط",
     "p10": "المئين العاشر",
     "p25": "المئين الخامس والعشرون",
     "p75": "المئين الخامس والسبعون",
     "p90": "المئين التسعون",
-    "tableCaption": "ملف الجلوكوز المتنقل — القيم لكل فترة 15 دقيقة على مدى 7 أيام. الهدف {low}-{high} mg/dL.",
-    "valueMgdl": "{value} mg/dL"
+    "tableCaption": "ملف الجلوكوز المتنقل — القيم لكل فترة 15 دقيقة على مدى 7 أيام. الهدف {low}-{high} {unit}."
   },
   "cgmChart": {
     "figureAriaLabel": "مخطط السكر — {count} قياسات، الهدف {low}-{high} {unit}",

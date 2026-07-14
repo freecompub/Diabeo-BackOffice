@@ -4,8 +4,13 @@
  *
  * Unité **canonique** du backoffice = **g/L** (stockage `cgm_entries.value_gl` /
  * `glycemia_entries.glycemia_gl`, contrat API, logique clinique). Toute conversion
- * `g/L ↔ mg/dL ↔ mmol/L` DOIT transiter par ce module — ne jamais ré-implémenter un
- * `× 100` / `/ 100` ailleurs (cf. inventaire des conversions dupliquées).
+ * du **flux de mesure** (ingestion/lecture BGM-CGM) et de l'**affichage** transite par
+ * ce module — ne pas y ré-implémenter un `× 100` / `/ 100`. **Périmètre (ADR #32)** :
+ * les conversions **clinique-interne au niveau des seuils/décisions** (ex.
+ * `GLYCEMIA_THRESHOLDS_MGDL.X / 100` dans `proposal-algorithm`/`dose-safety-guards`,
+ * `emergency.service`, `proposal-generator`) restent inline **par conception** (logique
+ * clinique explicitement hors périmètre de la normalisation) — leur migration éventuelle
+ * vers ce module est un follow-up, pas une exigence de cet ADR.
  *
  * ⚠️ **Module PUR, sans aucune dépendance** (ni Prisma, ni Redis, ni service) : il est
  * importable **côté client ET côté serveur**. Ne jamais y ajouter d'import qui tirerait
@@ -116,6 +121,10 @@ export function formatGlucose(
   gl: number,
   code: GlucoseUnitCode = 4,
 ): { value: number; unit: GlucoseUnitLabel } {
+  // Garde-fou : une entrée non finie (NaN/Infinity — division par 0, valeur
+  // absente non filtrée…) ressort `value: NaN` avec le bon libellé, jamais un
+  // arrondi trompeur. Les appelants d'affichage doivent tester `Number.isFinite`.
+  if (!Number.isFinite(gl)) return { value: NaN, unit: glucoseUnitLabel(code) }
   switch (code) {
     case 3:
       return { value: Math.round(gl * 100) / 100, unit: "g/L" }
