@@ -18,6 +18,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { useTranslations } from "next-intl"
 import { tokens, withAlpha } from "@/design-system/tokens"
+// Conversion d'unités : source de vérité unique = `@/lib/glucose/units` (ADR #32).
+import { glToMgdl } from "@/lib/glucose/units"
 
 /** L1/H7 (re-review) — observe `prefers-reduced-motion` so a mid-session
  *  preference change re-applies to the animation prop. */
@@ -62,11 +64,6 @@ export interface AgpPercentileChartProps {
   /** Minimum slot count to render the chart (rest → empty state). */
   minSlots?: number
   height?: number
-}
-
-/** Convert g/L → mg/dL (input stored in g/L per repo convention). */
-function glToMgdl(gl: number): number {
-  return gl * 100
 }
 
 function formatHour(minutes: number): string {

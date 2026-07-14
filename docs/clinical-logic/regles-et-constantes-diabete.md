@@ -82,7 +82,7 @@ Source : `getGlycemiaZone` (`src/components/diabeo/GlycemiaValue.tsx`) · Design
 
 | Constante | Valeur | Source | Sens |
 |---|---|---|---|
-| `CGM_AGGREGATE_RANGE_GL` | 0.20 – 6.00 g/L | `clinical-bounds.ts` | Plage CGM physiologiquement valide pour les **agrégats** (TIR/GMI/AGP). Aligné CHECK base `cgm_partitioning.sql`. |
+| `CGM_AGGREGATE_RANGE_GL` | 0.20 – 6.00 g/L | `clinical-bounds.ts` | Plage CGM physiologiquement valide pour les **agrégats** (TIR/GMI/AGP). Bornes **désormais appliquées par migration versionnée** (`CHECK value_gl BETWEEN 0.20 AND 6.00` + `CHECK glycemia_gl BETWEEN 0.20 AND 6.00`), plus seulement dans le fichier de référence `cgm_partitioning.sql` (ADR #32). |
 | Plancher d'affichage série CGM | 0.40 – 5.00 g/L | `glycemia.service.getCgmEntries` | Plage d'**affichage** de la courbe (≠ agrégats). |
 | `AGP_SUFFICIENCY.MIN_DAYS` | 14 j | `clinical-bounds.ts` | AGP fiable (ATTD/Battelino 2019) |
 | `AGP_SUFFICIENCY.MIN_CAPTURE_RATE` | 70 % | idem | Capture minimale AGP |
@@ -92,6 +92,13 @@ Source : `getGlycemiaZone` (`src/components/diabeo/GlycemiaValue.tsx`) · Design
 | `DASHBOARD_TIR.MIN_CAPTURE_RATE` | 30 % | idem | Plancher de suffisance pour publier le TIR |
 | `HBA1C_STALE_DAYS` | 180 j | idem | Péremption HbA1c labo (~6 mois) |
 | `BGM_CARNET.MIN_READINGS_PER_MOMENT` | 3 | idem | Relevés capillaires min/moment avant de publier une moyenne |
+
+> **Unité canonique de glycémie = g/L** (`1 g/L = 100 mg/dL`, jamais ×18 ; ADR #32). Stockage
+> (`cgm_entries.value_gl`, `glycemia_entries.glycemia_gl` — colonne unique depuis l'épic unités) **et**
+> contrat API en g/L. Toute conversion `g/L ↔ mg/dL ↔ mmol/L` passe par le module unique
+> **`src/lib/glucose/units.ts`** (`glToMgdl`/`mgdlToGl`/`mgdlToMmoll`/`formatGlucose`). L'affichage
+> convertit à la **présentation** selon `UserUnitPreferences.unitGlycemia` (3=g/L, 4=mg/dL, 5=mmol/L).
+> Le facteur molaire ÷18,0182 n'intervient **que** pour l'affichage mmol/L.
 
 ## 4. Tendances de repas — `MEAL_TREND` (US-2637)
 

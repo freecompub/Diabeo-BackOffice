@@ -12,6 +12,8 @@
 export const CGM_STALE_AFTER_MIN = 30
 
 import { recentOutOfRangeFrom } from "@/lib/cgm-freshness"
+// Conversion d'unités : source de vérité unique = `@/lib/glucose/units` (ADR #32).
+import { glToMgdl } from "@/lib/glucose/units"
 
 // Types de vue dans un module neutre (US-2632) : ré-exportés pour les
 // consommateurs (`PatientRecord`, `ReviewClient`, tests), et importés ci-dessous
@@ -34,7 +36,7 @@ const timeFmt = new Intl.DateTimeFormat("fr-FR", {
   hour12: false,
 })
 
-const toMgdl = (gl: number): number => Math.round(gl * 100)
+const toMgdl = (gl: number): number => Math.round(glToMgdl(gl))
 
 export function buildGlycemiaView(
   entries: CgmEntryLite[],
