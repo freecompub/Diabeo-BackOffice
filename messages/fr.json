@@ -1817,7 +1817,8 @@
     "slotSetErrorModeMismatch": "Le mode d'administration a changé. Rechargez la page et réessayez.",
     "slotSetErrorForbidden": "Action non autorisée pour ce rôle.",
     "slotSetErrorRateLimited": "Trop de tentatives. Réessayez dans quelques instants.",
-    "slotSetErrorStructural": "Vous pouvez seulement ajuster les valeurs, pas modifier les tranches horaires. Pour restructurer vos créneaux, contactez votre soignant."
+    "slotSetErrorStructural": "Vous pouvez seulement ajuster les valeurs, pas modifier les tranches horaires. Pour restructurer vos créneaux, contactez votre soignant.",
+    "slotSetErrorSlotTooShort": "Une tranche horaire proposée est trop courte (30 minutes minimum). Regroupez vos créneaux."
   },
   "patientInsulin": {
     "title": "Mon insulinothérapie",

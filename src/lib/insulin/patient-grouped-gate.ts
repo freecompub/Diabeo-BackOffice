@@ -89,6 +89,17 @@ function buildCoveringMinutes(slots: AnySlot[]): Float64Array {
   return arr
 }
 
+/** Durée d'un créneau HORAIRE (ISF/ICR heures ; pompe `"HH:MM"`) en minutes, wrap minuit inclus. `null` = non horaire. */
+function slotDurationMinutes(s: AnySlot): number | null {
+  let start: number | null
+  let end: number | null
+  if (isPumpForm(s)) { start = hhmmToMinutes(s.startTime); end = hhmmToMinutes(s.endTime) }
+  else if (isStyloForm(s) || isFixedForm(s)) return null
+  else { const iso = s as IsfIcrSlot; start = iso.startHour * 60; end = iso.endHour * 60 }
+  if (start === null || end === null) return null
+  return end > start ? end - start : MINUTES_PER_DAY - start + end // wrap minuit
+}
+
 export type PatientGroupedGateInput = {
   parameterType: "insulinSensitivityFactor" | "insulinToCarbRatio" | "basalRate" | "fixedDose"
   /** Disposition proposée (parsée, forme + couverture 24 h validées en amont). */
@@ -114,9 +125,11 @@ export type PatientGroupedGateResult = {
  * Évalue la garde patient d'un jeu groupé. Appelée UNIQUEMENT pour `proposer.source === "patient"` (les soignants
  * ne sont pas gatés — cliniciens qualifiés).
  *
+ * @throws unsupportedSlotSetParam — `fixedDose` (non exposé à la voie patient ; défensif fail-closed).
  * @throws deliveryModeMismatch — forme du jeu (stylo/pompe) incohérente avec le `configType` LIVE.
  * @throws structuralChangeNotAllowed — restructuration par un JUNIOR ; bascule de modalité stylo single↔split ;
  *   base incomplète/vide (établir une config initiale est un acte clinicien).
+ * @throws restructureSlotTooShort — restructuration produisant un créneau ISF/ICR/pompe de durée < min (anti-fragmentation).
  * @throws maturityTooLowForDecrease — baisse basale sous le seuil de maturité (pompe/stylo INTERMEDIATE+/CONFIRME).
  * @throws dkaAcknowledgmentRequired — baisse STYLO sans accusé DKA (bloquant).
  * @throws patientDeltaTooLarge — écart > cap patient (10 %) à une minute quelconque (ISF/ICR/pompe), ou amplitude
@@ -127,6 +140,11 @@ export function evaluatePatientGroupedGate(input: PatientGroupedGateInput): Pati
   const { parameterType, slots, baseline, isPen, maturity, sickDayAcknowledged } = input
   const isBasal = parameterType === "basalRate"
   const CAP_PCT = CLINICAL_BOUNDS.PATIENT_MAX_CHANGE_PERCENT // 10 %
+
+  // La voie patient n'expose PAS la dose fixe (route restreinte à ISF/ICR/basalRate). Défensif si un appelant
+  // court-circuitait : la dose fixe (clé `(usage,moment)`) n'a pas d'enveloppe horaire → rejet EXPLICITE
+  // fail-closed (plutôt qu'un `structuralChangeNotAllowed` trompeur via l'enveloppe all-NaN).
+  if (parameterType === "fixedDose") throw new Error("unsupportedSlotSetParam")
 
   // 0. Cohérence de mode (basale) : la forme du jeu doit matcher le `configType` LIVE. Jeu mixte déjà rejeté en amont.
   if (isBasal && slots.length > 0) {
@@ -169,8 +187,9 @@ export function evaluatePatientGroupedGate(input: PatientGroupedGateInput): Pati
     }
     for (const c of changed) {
       if (c.delta < 0) continue
-      const pct = c.old !== 0 ? Math.abs((c.delta / c.old) * 100) : 0
-      if (pct > CAP_PCT + EPS) throw new Error("patientDeltaTooLarge")
+      // Base non positive (dose stylo ≤ 0 U) → % non bornable → fail-closed (état live improbable, validé ≥ 0,5 U).
+      if (c.old <= 0) throw new Error("patientDeltaTooLarge")
+      if (Math.abs((c.delta / c.old) * 100) > CAP_PCT + EPS) throw new Error("patientDeltaTooLarge")
     }
 
     const sickDayAckAt = sickDayAcknowledged === true && hasDecrease ? new Date() : null
@@ -185,7 +204,18 @@ export function evaluatePatientGroupedGate(input: PatientGroupedGateInput): Pati
   // ─────────────────────────────────────────────────────────────────────────────────────────────
 
   // Restructuration (frontières/cardinalité ≠ base) : réservée INTERMEDIATE+ (JUNIOR = valeurs-seules).
-  if (!sameStructure && maturity === "JUNIOR") throw new Error("structuralChangeNotAllowed")
+  if (!sameStructure) {
+    if (maturity === "JUNIOR") throw new Error("structuralChangeNotAllowed")
+    // Anti-fragmentation (revue medical MEDIUM) : chaque créneau restructuré doit durer ≥
+    // `PATIENT_RESTRUCTURE_MIN_SLOT_MINUTES` (la cardinalité est déjà bornée à 24 par la route). Empêche un
+    // émiettement en micro-créneaux (illisible en revue, charge du résolveur `findSlotForHour`).
+    for (const slot of slots) {
+      const dur = slotDurationMinutes(slot)
+      if (dur !== null && dur < CLINICAL_BOUNDS.PATIENT_RESTRUCTURE_MIN_SLOT_MINUTES) {
+        throw new Error("restructureSlotTooShort")
+      }
+    }
+  }
 
   const coverBase = buildCoveringMinutes(baseline)
   const coverProp = buildCoveringMinutes(slots)
@@ -204,8 +234,20 @@ export function evaluatePatientGroupedGate(input: PatientGroupedGateInput): Pati
   // ISF/ICR : ratios → cap bilatéral seul, aucun gate maturité/DKA.
   if (isBasal && hasDecrease && maturity === "JUNIOR") throw new Error("maturityTooLowForDecrease")
 
+  // Audit HDS de la baisse POMPE (parité voie par-valeur, revue medical LOW) : l'accusé DKA n'est PAS requis
+  // pour la pompe mais reste TRACÉ s'il est fourni (`sickDayAckAt`), et `dkaAcknowledged` reflète l'accusé réel.
+  // `decreaseCount` = créneaux baissés appariés par clé (best-effort ; peut être 0 sur une restructuration pure,
+  // la baisse étant alors captée au niveau minute par l'enveloppe → `hasDecrease`).
+  let decreaseCount = 0
+  if (isBasal) {
+    for (const slot of slots) {
+      const old = baseByKey.get(keyOf(slot))
+      if (old !== undefined && valueOf(slot) < old - EPS) decreaseCount++
+    }
+  }
+  const sickDayAckAt = isBasal && hasDecrease && sickDayAcknowledged === true ? new Date() : null
   const decreaseAudit = isBasal && hasDecrease
-    ? { direction: "decrease", deliveryMode: "pump", dkaAcknowledged: false, maturityAtDecision: maturity }
+    ? { direction: "decrease", deliveryMode: "pump", dkaAcknowledged: sickDayAcknowledged === true, maturityAtDecision: maturity, decreaseCount }
     : null
-  return { sickDayAckAt: null, decreaseAudit }
+  return { sickDayAckAt, decreaseAudit }
 }

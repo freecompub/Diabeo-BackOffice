@@ -191,6 +191,39 @@ describe("gate STYLO — D3 : jeu MIXTE hausse+baisse, 1 accusé couvre tout", (
   })
 })
 
+describe("gate — corrections de revue", () => {
+  it("restructuration POMPE produisant un créneau < 30 min → restructureSlotTooShort (anti-fragmentation)", () => {
+    expect(() => evaluatePatientGroupedGate({
+      parameterType: "basalRate",
+      slots: [p("00:00", "00:15", 0.5), p("00:15", "00:00", 0.5)], // créneau 0h–0h15 = 15 min < 30
+      baseline: pumpFull(0.5),
+      isPen: false, maturity: "CONFIRME", sickDayAcknowledged: false,
+    })).toThrow("restructureSlotTooShort")
+  })
+  it("dose fixe sur la voie patient (non exposée) → unsupportedSlotSetParam (fail-closed explicite)", () => {
+    expect(() => evaluatePatientGroupedGate({
+      parameterType: "fixedDose",
+      slots: [{ usage: "bolus", moment: "morning", value: 6 }],
+      baseline: [{ usage: "bolus", moment: "morning", value: 6 }],
+      isPen: false, maturity: "CONFIRME", sickDayAcknowledged: false,
+    })).toThrow("unsupportedSlotSetParam")
+  })
+  it("hausse STYLO depuis une base 0 U (improbable) → patientDeltaTooLarge (% non bornable, fail-closed)", () => {
+    expect(() => evaluatePatientGroupedGate({
+      parameterType: "basalRate", slots: [stylo("evening", 1)], baseline: [stylo("evening", 0)],
+      isPen: true, maturity: "CONFIRME", sickDayAcknowledged: false,
+    })).toThrow("patientDeltaTooLarge")
+  })
+  it("audit baisse POMPE : accusé fourni tracé (sickDayAckAt + dkaAcknowledged reflète le réel)", () => {
+    const res = evaluatePatientGroupedGate({
+      parameterType: "basalRate", slots: pumpFull(0.95), baseline: pumpFull(1.0),
+      isPen: false, maturity: "INTERMEDIATE", sickDayAcknowledged: true, // pompe : accusé optionnel mais TRACÉ
+    })
+    expect(res.sickDayAckAt).toBeInstanceOf(Date)
+    expect(res.decreaseAudit).toMatchObject({ deliveryMode: "pump", dkaAcknowledged: true, decreaseCount: 2 })
+  })
+})
+
 describe("gate — cohérence de mode (anti-usurpation)", () => {
   it("forme STYLO mais config LIVE pompe (isPen=false) → deliveryModeMismatch", () => {
     expect(() => evaluatePatientGroupedGate({
