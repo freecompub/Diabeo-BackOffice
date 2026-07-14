@@ -2206,6 +2206,8 @@
     "reasonPatientRequested": "Demande du patient",
     "reasonManualAdjustment": "Ajustement manuel",
     "rationaleAvgGlucose": "moy. {value} g/L",
+    "rationaleCapped": "Plafonné à la borne autorisée",
+    "rationaleCappedFrom": "Plafonné (calcul {value} {unit})",
     "fixedDoseUsage": {
       "bolus": "Bolus (rapide)",
       "basal": "Basale (lente)",

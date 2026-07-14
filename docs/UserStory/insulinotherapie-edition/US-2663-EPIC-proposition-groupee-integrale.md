@@ -187,18 +187,28 @@ stricte avec l'écran par-valeur). 8. Frontière MDR : `nonInsulin` refusé cré
   **D2 — abandon titration d'un moment multi-doses** (signal non attribuable, reco medical) ; UI revue
   (`diffFixedDoseSlots`, libellé usage·moment, `highDoseWarning`) + i18n fr/en/ar. Flag OFF ⇒ par-valeur inchangée.
 - **S4 — Voie manuelle groupée** patient/infirmière/médecin (création pro + provenance) + retrait
-  `InsulinProposalDialog`. Première rupture UI.
-- **S5 — Retrait voie d'écriture `AdjustmentProposal`** + **contrat iOS** (endpoints par-valeur supprimés/redirigés,
-  payloads groupés versionnés, migration des `pending` legacy). **Toutes les ruptures iOS concentrées ici.**
+  `InsulinProposalDialog` ✅ **LIVRÉ** (PR #748). Première rupture UI.
+- **S5 — Retrait voie d'écriture `AdjustmentProposal`** ✅ **LIVRÉ** (grouped-only intégral). Découpage :
+  - **c1** — plafonnement clinique moteur (D1 : valeur hors borne **plafonnée** + `cappedToBound`, le médecin
+    tranche — jamais de rejet du levier ni d'auto-application).
+  - **c2** — bascule moteur **grouped-only** : les 4 flags `ENGINE_GROUPED_*` sont **supprimés** (émission
+    groupée par défaut et unique).
+  - **c3** — retrait des primitives d'écriture par-valeur (`createProposal`/`createManual`/`createEngineProposal`
+    du service + handler `POST /api/adjustment-proposals`) + tests/doc. `AdjustmentProposal` **conservé** en
+    lecture/registre (`GET`, `accept`/`reject`).
+  - **c4** — port de l'**accusé/actualisation** (`Ack`/`Actualization`) sur `SlotSetProposal` (1 accusé = jeu
+    groupé entier — décision D1 ci-dessous tranchée « porter en groupé »).
+  - **Contrat iOS** : **hors périmètre** (décision projet — l'alignement iOS n'est plus pris en compte).
+  - **Migration `pending` legacy** : sans objet (application **pas encore en production** — décision produit).
 - **Transverse** : tests (dont intégration cooldown), i18n, DPIA, refonte du guide `proposition-insuline.html` +
   catalogue `regles-et-constantes-diabete.md` (CAS par-créneau = règle de sûreté à cataloguer).
 
 ## Décisions PRODUIT ouvertes (à trancher aux slices concernées)
 
-- **D1 (avant S5)** — `AdjustmentProposalAck` / `AdjustmentProposalActualization` (US-2065/2066) sont **1:1 sur
-  `AdjustmentProposal`**. Sémantique groupée indéfinie (accuser/actualiser *une disposition* ?). Options : porter
-  en groupé / conserver par-valeur sur une voie séparée / déprécier. **Ne pas retirer `AdjustmentProposal` sans
-  trancher.**
+- **D1 (avant S5) — TRANCHÉ (porter en groupé)** : `AdjustmentProposalAck` / `AdjustmentProposalActualization`
+  (US-2065/2066) étaient **1:1 sur `AdjustmentProposal`**. Décision : **porter en groupé** sur `SlotSetProposal`
+  (modèles parallèles `SlotSetProposalAck`/`SlotSetProposalActualization`, **1 accusé = jeu groupé entier**) —
+  livré en **S5/c4**.
 - **D2 (avant S3)** — **Supersession** : une proposition **moteur** groupée supersède-t-elle une **demande patient**
   pending sur le même levier ? Qui gagne, quelle notification patient ?
 - **D3 (avant S4)** — **Soumission mixte hausse+baisse** : un seul accusé DKA couvre-t-il toutes les baisses, ou

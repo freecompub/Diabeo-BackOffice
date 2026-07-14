@@ -40,8 +40,9 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     // US-2648a — écriture DIRECTE réservée au DOCTOR (autorité clinique). Un NURSE
-    // ou un patient passe désormais par une PROPOSITION (POST /api/adjustment-proposals,
-    // validée par un médecin). VIEWER/NURSE en écriture directe → 403. (Anc. US-SEC-001.)
+    // ou un patient passe désormais par une PROPOSITION GROUPÉE (NURSE → `POST /api/slot-set-proposals` ;
+    // patient → `PUT /api/patient/insulin-slot-set`), validée par un médecin (voie par-valeur retirée US-2663 S5).
+    // VIEWER/NURSE en écriture directe → 403. (Anc. US-SEC-001.)
     const user = requireRole(req, "DOCTOR")
     const hasConsent = await requireGdprConsent(user.id)
     if (!hasConsent) return NextResponse.json({ error: "gdprConsentRequired" }, { status: 403 })

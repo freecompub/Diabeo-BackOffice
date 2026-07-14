@@ -169,6 +169,18 @@ describe("GroupedProposalReview", () => {
     expect(screen.getByText(/0,6.*g\/L|0\.6.*g\/L/)).toBeTruthy()
   })
 
+  it("US-2663 (S5, D1) : rationale plafonnée (`cappedToBound`) → badge d'alerte + valeur brute calculée", () => {
+    const algoItem = item({
+      source: "algorithm",
+      rows: [row({ startHour: 8, endHour: 22, proposedValue: 0.5, liveValue: 0.45, changed: true })],
+      rationale: [rationale({ startHour: 8, cappedToBound: true, cappedFromValue: 0.62 })],
+    })
+    render(<GroupedProposalReview items={[algoItem]} canDecide busyId={null} onDecide={vi.fn()} />)
+    // Le médecin voit que le moteur voulait aller à 0,62 mais a été plafonné à la borne.
+    expect(screen.getByText(/Plafonné/)).toBeTruthy()
+    expect(screen.getByText(/0[.,]62/)).toBeTruthy()
+  })
+
   it("item ALGORITHME : rationale INCOMPLÈTE (créneau changé sans entrée appariée) → aucun motif, pas de crash", () => {
     const algoItem = item({
       source: "algorithm",

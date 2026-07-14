@@ -1,11 +1,14 @@
 /**
- * Tests — US-2663 (S3b-1) : bascule du générateur moteur vers l'ÉMISSION GROUPÉE ISF/ICR
- * (`proposalGeneratorService.generateForPatient`, derrière le flag `ENGINE_GROUPED_ISF_ICR`).
+ * Tests — US-2663 (S5) : le générateur moteur émet des propositions GROUPÉES
+ * (`proposalGeneratorService.generateForPatient`).
+ *
+ * Depuis S5, l'émission GROUPÉE est le comportement PAR DÉFAUT et UNIQUE : la voie
+ * par-valeur `createEngineProposal` a été RETIRÉE du service (plus aucun flag
+ * `ENGINE_GROUPED_*` — le groupé n'est plus conditionnel).
  *
  * Sécurité clinique testée :
- *  - flag OFF (défaut) → comportement par-valeur INCHANGÉ (`createEngineProposal`, jamais de groupé) ;
- *  - flag ON → **une** `SlotSetProposal` `source: "algorithm"` par levier, disposition ENTIÈRE assemblée
- *    depuis la config LIVE, valeurs changées superposées ;
+ *  - **une** `SlotSetProposal` `source: "algorithm"` par levier, disposition ENTIÈRE
+ *    assemblée depuis la config LIVE, valeurs changées superposées ;
  *  - R2 — CAS par créneau CHANGÉ : un créneau dont la base a DÉRIVÉ depuis l'analyse est ABANDONNÉ
  *    (jamais une magnitude périmée dans la disposition) ;
  *  - R4 — no-op : aucune proposition émise si aucun créneau ne change (0 candidat OU tous dérivés) ;
@@ -13,7 +16,7 @@
  *  - R3 — rationale MOTEUR : une entrée par créneau changé (motif/confiance/volume/moyenne/période) ;
  *  - un rejet fail-closed de `createSetProposal` reste NON FATAL (run continue, `created = 0`).
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest"
+import { describe, it, expect, beforeEach, vi } from "vitest"
 import { prismaMock } from "../helpers/prisma-mock"
 
 vi.mock("@/lib/services/treatment-mode.service", () => ({
@@ -30,10 +33,10 @@ vi.mock("@/lib/services/meal-trends.service", () => ({
 }))
 vi.mock("@/lib/services/adjustment.service", async (importOriginal) => {
   // US-2663 (S3b-1) — le générateur importe la garde pure `reasonImpliesIncrease` (parité `reasonDirectionMismatch`).
-  // On récupère la VRAIE fonction (pas de réimplémentation → aucun drift possible si un suffixe directionnel évolue) ;
-  // seul `adjustmentService.createEngineProposal` est stubé (on vérifie qu'il n'est PAS appelé en mode groupé).
+  // On récupère la VRAIE fonction (pas de réimplémentation → aucun drift possible si un suffixe directionnel évolue).
+  // La voie par-valeur (`createEngineProposal`) a été RETIRÉE (S5) : persistance moteur = `createSetProposal` uniquement.
   const actual = await importOriginal<typeof import("@/lib/services/adjustment.service")>()
-  return { ...actual, adjustmentService: { createEngineProposal: vi.fn() } }
+  return actual
 })
 vi.mock("@/lib/services/analytics.service", () => ({
   analyticsService: { fixedDoseTrend: vi.fn() },
@@ -56,7 +59,6 @@ import { proposalGeneratorService, assembleGroupedDisposition, assembleGroupedPu
 import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
 import { mealtimePattern } from "@/lib/services/meal-trends.service"
-import { adjustmentService } from "@/lib/services/adjustment.service"
 import { analyticsService } from "@/lib/services/analytics.service"
 import { clinicalReviewFlagService } from "@/lib/services/clinical-review-flag.service"
 import { slotSetProposalService } from "@/lib/services/slot-set-proposal.service"
@@ -66,7 +68,6 @@ const getSettings = vi.mocked(insulinTherapyService.getSettings)
 const dailyJournal = vi.mocked(mealtimePattern.dailyJournal)
 const correctionTrend = vi.mocked(mealtimePattern.correctionTrend)
 const fastingTrend = vi.mocked(mealtimePattern.fastingTrend)
-const createEngine = vi.mocked(adjustmentService.createEngineProposal)
 const raiseFlag = vi.mocked(clinicalReviewFlagService.raise)
 const createSet = vi.mocked(slotSetProposalService.createSetProposal)
 const getFixedDoseSlots = vi.mocked(insulinTherapyService.getFixedDoseSlots)
@@ -111,7 +112,6 @@ function setup(opts: {
   prismaMock.patient.findFirst.mockResolvedValue({ pathology: "DT1", pregnancyMode: false } as never)
   dailyJournal.mockResolvedValue((opts.meals ?? [meal(), meal(), meal()]) as never)
   correctionTrend.mockResolvedValue((opts.corrections ?? []) as never)
-  createEngine.mockResolvedValue({ id: "e1" } as never)
   createSet.mockResolvedValue({ id: "s1" } as never)
   // Relecture LIVE (T1) — par défaut = miroir de `getSettings` (pas de dérive), avec un mealLabel ICR.
   prismaMock.carbRatio.findMany.mockResolvedValue(
@@ -132,17 +132,12 @@ function setCallFor(param: "insulinToCarbRatio" | "insulinSensitivityFactor") {
 describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    process.env.ENGINE_GROUPED_ISF_ICR = "true"
-  })
-  afterEach(() => {
-    delete process.env.ENGINE_GROUPED_ISF_ICR
   })
 
-  it("flag ON — ICR : émet UNE SlotSetProposal source=algorithm (jamais de par-valeur)", async () => {
+  it("ICR : émet UNE SlotSetProposal source=algorithm (jamais de par-valeur)", async () => {
     setup() // PPG 2,0 g/L > plafond DT1 1,80 → baisse ICR sur le créneau [12,14]
     const res = await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled() // plus de voie par-valeur en mode groupé
     const call = setCallFor("insulinToCarbRatio")!
     expect(call).toBeDefined()
     expect(call.patientId).toBe(1)
@@ -159,7 +154,7 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     expect(res.created).toBe(1)
   })
 
-  it("flag ON — disposition multi-créneaux : seul le créneau changé est superposé, l'autre garde sa valeur live", async () => {
+  it("disposition multi-créneaux : seul le créneau changé est superposé, l'autre garde sa valeur live", async () => {
     // Créneau matin [6,12] PPG 2,0 → baisse ; créneau midi [12,18] PPG 1,5 in-band → inchangé.
     setup({
       carbRatios: [{ startHour: 6, endHour: 12, gramsPerUnit: 10 }, { startHour: 12, endHour: 18, gramsPerUnit: 8 }],
@@ -202,7 +197,7 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     expect(res.created).toBe(0)
   })
 
-  it("flag ON — ISF : émet une SlotSetProposal ISF (période 30 j), rationale isfTooHigh", async () => {
+  it("ISF : émet une SlotSetProposal ISF (période 30 j), rationale isfTooHigh", async () => {
     const ISF_SLOT = { startHour: 8, endHour: 12, sensitivityFactorGl: 0.5 }
     setup({
       meals: [],
@@ -212,7 +207,6 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     })
     await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled()
     const call = setCallFor("insulinSensitivityFactor")!
     expect(call).toBeDefined()
     expect(call.proposer).toEqual({ userId: null, source: "algorithm" })
@@ -231,17 +225,14 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     expect(res.slotsConsidered).toBe(1) // le créneau a bien été analysé
   })
 
-  it("flag OFF (défaut) — voie par-valeur INCHANGÉE (createEngineProposal, aucune groupée)", async () => {
-    delete process.env.ENGINE_GROUPED_ISF_ICR
+  it("US-2663 (S5) — GROUPED-ONLY : émet une proposition groupée (voie par-valeur retirée)", async () => {
     setup()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createSet).not.toHaveBeenCalled()
-    expect(createEngine).toHaveBeenCalledTimes(1)
-    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "insulinToCarbRatio", reason: "icrTooHigh" })
+    expect(setCallFor("insulinToCarbRatio")).toBeDefined()
     expect(res.created).toBe(1)
   })
 
-  it("flag ON — ICR + ISF simultanés : DEUX propositions groupées (une par levier), toujours 0 par-valeur", async () => {
+  it("ICR + ISF simultanés : DEUX propositions groupées (une par levier), toujours 0 par-valeur", async () => {
     const ISF_SLOT = { startHour: 8, endHour: 12, sensitivityFactorGl: 0.5 }
     setup({
       sensitivityFactors: [ISF_SLOT],
@@ -250,7 +241,6 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
     }) // ICR baisse (meals défaut PPG 2,0) + ISF baisse
     const res = await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled()
     expect(setCallFor("insulinToCarbRatio")).toBeDefined()
     expect(setCallFor("insulinSensitivityFactor")).toBeDefined()
     expect(createSet).toHaveBeenCalledTimes(2)
@@ -304,6 +294,8 @@ describe("proposalGeneratorService — émission GROUPÉE (US-2663 S3b-1)", () =
 })
 
 describe("assembleGroupedDisposition (US-2663 S3b-1, cœur pur)", () => {
+  // US-2663 (S5) — `bounds` est désormais REQUIS sur les assembleurs purs. Valeurs live ICR ⊂ [3,30] → no-op.
+  const ICR = { min: 3, max: 30 }
   const live = [
     { startHour: 6, endHour: 12, value: 10, mealLabel: "Petit-déjeuner" },
     { startHour: 12, endHour: 18, value: 8 },
@@ -324,7 +316,7 @@ describe("assembleGroupedDisposition (US-2663 S3b-1, cœur pur)", () => {
   }) as never
 
   it("créneau changé cohérent → superposé, autres inchangés, rationale 1 entrée, mealLabel préservé (R5)", () => {
-    const res = assembleGroupedDisposition(live, [cand()], 14)!
+    const res = assembleGroupedDisposition(live, [cand()], 14, ICR)!
     expect(res.disposition).toEqual([
       { startHour: 6, endHour: 12, value: 9, mealLabel: "Petit-déjeuner" }, // changé
       { startHour: 12, endHour: 18, value: 8 }, // inchangé
@@ -335,42 +327,107 @@ describe("assembleGroupedDisposition (US-2663 S3b-1, cœur pur)", () => {
   })
 
   it("garde direction : reason icrTooLow (hausse attendue) mais BAISSE proposée → abandonné + comptabilisé", () => {
-    const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooLow", proposedValue: 9 })], 14)
+    const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooLow", proposedValue: 9 })], 14, ICR)
     expect(res.disposition).toBeNull() // R4 : le seul candidat est abandonné
     expect(res.directionMismatches).toBe(1)
   })
 
   it("delta nul (proposé == live) sur un reason directionnel → abandon SILENCIEUX, pas un mismatch", () => {
     // proposedValue 10 == live[6].value 10 → no-op ; ne doit PAS être compté comme directionMismatch (log error).
-    const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooHigh", proposedValue: 10 })], 14)
+    const res = assembleGroupedDisposition(live, [cand({ reason: "icrTooHigh", proposedValue: 10 })], 14, ICR)
     expect(res.disposition).toBeNull()
     expect(res.directionMismatches).toBe(0)
   })
 
   it("dérive de valeur (currentValue ≠ live) → abandonné (R2)", () => {
-    const res = assembleGroupedDisposition(live, [cand({ currentValue: 11 })], 14) // live[6].value = 10
+    const res = assembleGroupedDisposition(live, [cand({ currentValue: 11 })], 14, ICR) // live[6].value = 10
     expect(res.disposition).toBeNull()
     expect(res.directionMismatches).toBe(0)
   })
 
   it("dérive de endHour → abandonné (R2)", () => {
-    const res = assembleGroupedDisposition(live, [cand({ endHour: 11 })], 14) // live[6].endHour = 12
+    const res = assembleGroupedDisposition(live, [cand({ endHour: 11 })], 14, ICR) // live[6].endHour = 12
     expect(res.disposition).toBeNull()
   })
 
   it("startHour absent du live → abandonné", () => {
-    const res = assembleGroupedDisposition(live, [cand({ startHour: 20, endHour: 22 })], 14)
+    const res = assembleGroupedDisposition(live, [cand({ startHour: 20, endHour: 22 })], 14, ICR)
     expect(res.disposition).toBeNull()
   })
 
   it("liste vide de candidats → no-op", () => {
-    const res = assembleGroupedDisposition(live, [], 14)
+    const res = assembleGroupedDisposition(live, [], 14, ICR)
     expect(res.disposition).toBeNull()
     expect(res.rationale).toEqual([])
   })
 })
 
+describe("assembleGroupedDisposition — PLAFONNEMENT à la borne (US-2663 S5, D1)", () => {
+  const ICR = { min: 3, max: 30 } // bornes ICR (g/U)
+  const live = [{ startHour: 6, endHour: 12, value: 28 }]
+  const cand = (proposedValue: number, reason = "icrTooLow") => ([{
+    startHour: 6, endHour: 12,
+    cand: { parameterType: "insulinToCarbRatio", reason, currentValue: 28, proposedValue, changePercent: 10, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 },
+  }] as never)
+
+  it("valeur calculée > max → proposée À LA BORNE + cappedToBound + valeur brute", () => {
+    const res = assembleGroupedDisposition(live, cand(35), 14, ICR)! // 35 > max 30
+    expect(res.disposition![0]!.value).toBe(30) // plafonné à la borne
+    expect(res.rationale[0]).toMatchObject({ cappedToBound: true, cappedFromValue: 35 })
+  })
+
+  it("valeur calculée dans les bornes → PAS de plafonnement (cappedToBound absent)", () => {
+    const res = assembleGroupedDisposition(live, cand(29), 14, ICR)! // 29 ≤ 30
+    expect(res.disposition![0]!.value).toBe(29)
+    expect(res.rationale[0]!.cappedToBound).toBeUndefined()
+  })
+
+  it("créneau DÉJÀ à la borne + calcul dépasse → plafonné == live → delta 0 → no-op (rien proposé)", () => {
+    const atMax = [{ startHour: 6, endHour: 12, value: 30 }]
+    const res = assembleGroupedDisposition(atMax, [{ startHour: 6, endHour: 12, cand: { parameterType: "insulinToCarbRatio", reason: "icrTooLow", currentValue: 30, proposedValue: 34, changePercent: 10, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 } }] as never, 14, ICR)
+    expect(res.disposition).toBeNull()
+  })
+
+  it("valeur calculée < min (vers PLUS d'insuline) → plafonnée AU PLANCHER + cappedToBound", () => {
+    const liveNearMin = [{ startHour: 6, endHour: 12, value: 4 }] // proche du min ICR (3)
+    const c = [{ startHour: 6, endHour: 12, cand: { parameterType: "insulinToCarbRatio", reason: "icrTooHigh", currentValue: 4, proposedValue: 2, changePercent: -50, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 } }] as never
+    const res = assembleGroupedDisposition(liveNearMin, c, 14, ICR)! // 2 < min 3
+    expect(res.disposition![0]!.value).toBe(3) // plafonné au plancher
+    expect(res.rationale[0]).toMatchObject({ cappedToBound: true, cappedFromValue: 2 })
+  })
+
+  it("base LEGACY hors-borne → abandon par la garde d'intégrité de base (finding #1)", () => {
+    // Live 32 > max 30 (donnée legacy). La garde `isBaseOutOfBounds` abandonne le créneau AVANT le check de
+    // direction → `disposition` null ET `directionMismatches` = 0 (le contrôle de sens n'est jamais atteint).
+    const liveOob = [{ startHour: 6, endHour: 12, value: 32 }] // > max 30 (donnée legacy)
+    const c = [{ startHour: 6, endHour: 12, cand: { parameterType: "insulinToCarbRatio", reason: "icrTooLow", currentValue: 32, proposedValue: 35, changePercent: 10, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 } }] as never
+    const res = assembleGroupedDisposition(liveOob, c, 14, ICR)
+    expect(res.disposition).toBeNull()
+    expect(res.directionMismatches).toBe(0) // garde d'intégrité de base atteinte avant la garde de direction
+  })
+
+  it("base hors-borne + clamp MÊME sens que reason → abandonné (finding #1, pas de titration hors-cap depuis base invalide)", () => {
+    // Live 32 > max 30. reason baisse (icrTooHigh), proposé 31 : SANS la garde, le clamp 31→30 donnerait un
+    // delta 30−32 = −2 (baisse cohérente) et persisterait un mouvement potentiellement > cap de titration.
+    // AVEC la garde d'intégrité de base → le créneau est abandonné (jamais titrer depuis une base invalide).
+    const liveOob = [{ startHour: 6, endHour: 12, value: 32 }] // > max 30 (donnée legacy)
+    const c = [{ startHour: 6, endHour: 12, cand: { parameterType: "insulinToCarbRatio", reason: "icrTooHigh", currentValue: 32, proposedValue: 31, changePercent: -3, confidence: "high", supportingEvents: 8, totalEventsConsidered: 8 } }] as never
+    const res = assembleGroupedDisposition(liveOob, c, 14, ICR)
+    expect(res.disposition).toBeNull()
+  })
+
+  it("levier STYLO (U TOTALES) : plafonnement au plancher MDI_BASAL_MIN_U, jamais les bornes pompe", () => {
+    const liveStylo = [{ kind: "daily" as const, value: 1 }]
+    const STYLO = { min: 0.5, max: 9999.99 } // U totales (PAS BASAL_MIN/MAX pompe)
+    const c = [{ kind: "daily", cand: { parameterType: "basalRate", reason: "basalTooHigh", currentValue: 1, proposedValue: 0.2, changePercent: -80, confidence: "medium", supportingEvents: 4, totalEventsConsidered: 4 } }] as never
+    const res = assembleGroupedStyloDisposition(liveStylo, c, 7, STYLO)! // 0,2 < plancher 0,5
+    expect(res.disposition).toEqual([{ kind: "daily", value: 0.5 }])
+    expect(res.rationale[0]).toMatchObject({ basalDoseKind: "daily", cappedToBound: true, cappedFromValue: 0.2 })
+  })
+})
+
 describe("assembleGroupedPumpDisposition (US-2663 S3c, cœur pur POMPE)", () => {
+  const PUMP = { min: 0.05, max: 5 } // bornes basale pompe (U/h), débits live ⊂ bornes → no-op
   const livePump = [
     { id: "noct", startTime: "00:00", endTime: "06:00", rate: 0.8 },
     { id: "day", startTime: "06:00", endTime: "00:00", rate: 1.1 },
@@ -391,7 +448,7 @@ describe("assembleGroupedPumpDisposition (US-2663 S3c, cœur pur POMPE)", () => 
   }) as never
 
   it("créneau nocturne changé → superposé, autres inchangés, temps EXACTS préservés, rationale clé startHour", () => {
-    const res = assembleGroupedPumpDisposition(livePump, [pumpCand()], 14)!
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand()], 14, PUMP)!
     expect(res.disposition).toEqual([
       { startTime: "00:00", endTime: "06:00", rate: 0.85 }, // hausse nocturne
       { startTime: "06:00", endTime: "00:00", rate: 1.1 }, // inchangé
@@ -402,25 +459,24 @@ describe("assembleGroupedPumpDisposition (US-2663 S3c, cœur pur POMPE)", () => 
   })
 
   it("garde direction : basalTooLow (hausse) mais BAISSE proposée → abandonné + comptabilisé", () => {
-    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ reason: "basalTooLow", proposedValue: 0.75 })], 14)
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ reason: "basalTooLow", proposedValue: 0.75 })], 14, PUMP)
     expect(res.disposition).toBeNull()
     expect(res.directionMismatches).toBe(1)
   })
 
   it("dérive de débit (currentValue ≠ live rate) → abandonné (R2)", () => {
-    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ currentValue: 0.9 })], 14) // live noct = 0.8
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ currentValue: 0.9 })], 14, PUMP) // live noct = 0.8
     expect(res.disposition).toBeNull()
   })
 
   it("slotId absent du live → abandonné", () => {
-    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ slotId: "ghost" })], 14)
+    const res = assembleGroupedPumpDisposition(livePump, [pumpCand({ slotId: "ghost" })], 14, PUMP)
     expect(res.disposition).toBeNull()
   })
 })
 
-describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c, flag ENGINE_GROUPED_PUMP)", () => {
+describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c)", () => {
   beforeEach(() => vi.clearAllMocks())
-  afterEach(() => delete process.env.ENGINE_GROUPED_PUMP)
 
   /** Config pompe : créneau nocturne [0,6) débit 0,8 + créneau jour [6,0) débit 1,1. */
   function setupPump() {
@@ -453,12 +509,10 @@ describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c, fl
     ] as never)
   }
 
-  it("flag ON — émet UNE SlotSetProposal basalRate (disposition pompe entière, hausse nocturne)", async () => {
-    process.env.ENGINE_GROUPED_PUMP = "true"
+  it("émet UNE SlotSetProposal basalRate (disposition pompe entière, hausse nocturne)", async () => {
     setupPump()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled() // plus de par-valeur en mode groupé pompe
     const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
     expect(call).toBeDefined()
     expect(call![0].proposer).toEqual({ userId: null, source: "algorithm" })
@@ -470,17 +524,16 @@ describe("proposalGeneratorService — émission GROUPÉE POMPE (US-2663 S3c, fl
     expect(res.created).toBe(1)
   })
 
-  it("flag OFF (défaut) — voie par-valeur POMPE inchangée (createEngineProposal, aucune groupée)", async () => {
+  it("US-2663 (S5) — GROUPED-ONLY POMPE : sans flag, émet groupé (jamais par-valeur)", async () => {
     setupPump()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createSet).not.toHaveBeenCalled()
-    expect(createEngine).toHaveBeenCalledTimes(1)
-    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "basalRate", pumpBasalSlotId: "noct" })
+    expect(createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")).toBeDefined()
     expect(res.created).toBe(1)
   })
 })
 
 describe("assembleGroupedFixedDose (US-2663 S3d PR2, cœur pur DOSE FIXE)", () => {
+  const FIXED = { min: 0.5, max: 999.99 } // bornes dose fixe (U), doses live ⊂ bornes → no-op
   const live = [
     { usage: "bolus", moment: "morning", value: 6 },
     { usage: "basal", moment: "evening", value: 20 },
@@ -501,7 +554,7 @@ describe("assembleGroupedFixedDose (US-2663 S3d PR2, cœur pur DOSE FIXE)", () =
   }) as never
 
   it("dose changée cohérente → superposée par (usage,moment), autres inchangées, rationale clé (usage,moment)", () => {
-    const res = assembleGroupedFixedDose(live as never, [fdCand()], 14)!
+    const res = assembleGroupedFixedDose(live as never, [fdCand()], 14, FIXED)!
     expect(res.disposition).toEqual([
       { usage: "bolus", moment: "morning", value: 7 }, // changé (hausse)
       { usage: "basal", moment: "evening", value: 20 }, // inchangé
@@ -512,32 +565,31 @@ describe("assembleGroupedFixedDose (US-2663 S3d PR2, cœur pur DOSE FIXE)", () =
   })
 
   it("garde direction : fixedDoseTooLow (hausse) mais BAISSE proposée → abandonné + comptabilisé", () => {
-    const res = assembleGroupedFixedDose(live as never, [fdCand({ reason: "fixedDoseTooLow", proposedValue: 5 })], 14)
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ reason: "fixedDoseTooLow", proposedValue: 5 })], 14, FIXED)
     expect(res.disposition).toBeNull()
     expect(res.directionMismatches).toBe(1)
   })
 
   it("même moment mais USAGE différent → clés distinctes (pas de collision bolus/basal)", () => {
     // basal/evening 20 → 22 (hausse) ; bolus/morning inchangé. La clé (usage,moment) distingue.
-    const res = assembleGroupedFixedDose(live as never, [fdCand({ usage: "basal", moment: "evening", currentValue: 20, proposedValue: 22 })], 14)!
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ usage: "basal", moment: "evening", currentValue: 20, proposedValue: 22 })], 14, FIXED)!
     expect(res.disposition!.find((s: { usage: string }) => s.usage === "basal")!.value).toBe(22)
     expect(res.disposition!.find((s: { usage: string }) => s.usage === "bolus")!.value).toBe(6)
   })
 
   it("dérive de valeur (currentValue ≠ live) → abandonné (R2)", () => {
-    const res = assembleGroupedFixedDose(live as never, [fdCand({ currentValue: 7 })], 14) // live bolus/morning = 6
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ currentValue: 7 })], 14, FIXED) // live bolus/morning = 6
     expect(res.disposition).toBeNull()
   })
 
   it("clé (usage,moment) absente du live → abandonné", () => {
-    const res = assembleGroupedFixedDose(live as never, [fdCand({ moment: "night" })], 14)
+    const res = assembleGroupedFixedDose(live as never, [fdCand({ moment: "night" })], 14, FIXED)
     expect(res.disposition).toBeNull()
   })
 })
 
-describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d PR2, flag ENGINE_GROUPED_FIXED_DOSE)", () => {
+describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d PR2)", () => {
   beforeEach(() => vi.clearAllMocks())
-  afterEach(() => delete process.env.ENGINE_GROUPED_FIXED_DOSE)
 
   /** Config doses simples : selon `slots` (défaut = bolus/morning 6 U). Creux pré-dose HAUTS → fixedDoseTooLow (hausse). */
   function setupFixedDose(slots: { usage: string; moment: string; valueU: number }[] = [{ usage: "bolus", moment: "morning", valueU: 6 }], troughGl = 1.6) {
@@ -556,12 +608,10 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
     getFixedDoseSlots.mockResolvedValue(slots.map((s) => ({ usage: s.usage, moment: s.moment, value: s.valueU })) as never)
   }
 
-  it("flag ON — émet UNE SlotSetProposal fixedDose (clé usage+moment, hausse)", async () => {
-    process.env.ENGINE_GROUPED_FIXED_DOSE = "true"
+  it("émet UNE SlotSetProposal fixedDose (clé usage+moment, hausse)", async () => {
     setupFixedDose()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled()
     const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "fixedDose")
     expect(call).toBeDefined()
     expect(call![0].proposer).toEqual({ userId: null, source: "algorithm" })
@@ -574,17 +624,14 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
     expect(res.created).toBe(1)
   })
 
-  it("flag OFF (défaut) — voie par-valeur INCHANGÉE (createEngineProposal, aucune groupée)", async () => {
+  it("US-2663 (S5) — GROUPED-ONLY DOSE FIXE : émet groupé (jamais par-valeur)", async () => {
     setupFixedDose()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createSet).not.toHaveBeenCalled()
-    expect(createEngine).toHaveBeenCalledTimes(1)
-    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "fixedDose", moment: "morning" })
+    expect(createSet.mock.calls.find((c) => c[0]?.parameterType === "fixedDose")).toBeDefined()
     expect(res.created).toBe(1)
   })
 
   it("D2 — moment MULTI-DOSES (bolus + basal au même moment) → ABANDONNÉ (aucune proposition ni par-valeur)", async () => {
-    process.env.ENGINE_GROUPED_FIXED_DOSE = "true"
     // Deux doses au moment « evening » (bolus + basal) → signal non attribuable → abandon (D2).
     setupFixedDose([
       { usage: "bolus", moment: "evening", valueU: 6 },
@@ -592,12 +639,10 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
     ])
     const res = await proposalGeneratorService.generateForPatient(1, 99)
     expect(createSet).not.toHaveBeenCalled() // moment multi-doses jamais titré
-    expect(createEngine).not.toHaveBeenCalled()
     expect(res.created).toBe(0)
   })
 
   it("D2 — moment multi-doses avec HYPO (candidat de BAISSE abandonné) → lève un ClinicalReviewFlag (jamais silencieux)", async () => {
-    process.env.ENGINE_GROUPED_FIXED_DOSE = "true"
     // Creux BAS (0,6 g/L) → dose trop haute → candidat de BAISSE ; moment « evening » multi-doses → abandon.
     // Garde-fou medical : l'abandon d'une baisse (signal hypo) DOIT alerter le médecin (flag), pas juste logger.
     setupFixedDose([
@@ -611,6 +656,7 @@ describe("proposalGeneratorService — émission GROUPÉE DOSE FIXE (US-2663 S3d
 })
 
 describe("assembleGroupedStyloDisposition (US-2663 S3e PR2, cœur pur BASALE STYLO)", () => {
+  const STYLO_B = { min: 0.5, max: 9999.99 } // bornes basale stylo (U totales), doses live ⊂ bornes → no-op
   const stCand = (over: Partial<{ kind: "daily" | "morning" | "evening"; currentValue: number; proposedValue: number; reason: string }> = {}) => ({
     kind: over.kind ?? "daily",
     cand: {
@@ -626,7 +672,7 @@ describe("assembleGroupedStyloDisposition (US-2663 S3e PR2, cœur pur BASALE STY
   }) as never
 
   it("dose daily changée → superposée, rationale clé basalDoseKind", () => {
-    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand()], 7)!
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand()], 7, STYLO_B)!
     expect(res.disposition).toEqual([{ kind: "daily", value: 21 }])
     expect(res.rationale).toHaveLength(1)
     expect(res.rationale[0]).toMatchObject({ basalDoseKind: "daily", reason: "basalTooLow", analysisPeriod: 7 })
@@ -635,36 +681,35 @@ describe("assembleGroupedStyloDisposition (US-2663 S3e PR2, cœur pur BASALE STY
 
   it("split : une dose changée (evening), l'autre (morning) garde sa valeur live", () => {
     const live = [{ kind: "morning" as const, value: 12 }, { kind: "evening" as const, value: 10 }]
-    const res = assembleGroupedStyloDisposition(live, [stCand({ kind: "evening", currentValue: 10, proposedValue: 9, reason: "basalTooHigh" })], 7)!
+    const res = assembleGroupedStyloDisposition(live, [stCand({ kind: "evening", currentValue: 10, proposedValue: 9, reason: "basalTooHigh" })], 7, STYLO_B)!
     expect(res.disposition).toEqual([{ kind: "morning", value: 12 }, { kind: "evening", value: 9 }])
     expect(res.rationale[0]).toMatchObject({ basalDoseKind: "evening", reason: "basalTooHigh" })
   })
 
   it("garde direction : basalTooLow (hausse) mais BAISSE proposée → abandonné + comptabilisé", () => {
-    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ reason: "basalTooLow", proposedValue: 19 })], 7)
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ reason: "basalTooLow", proposedValue: 19 })], 7, STYLO_B)
     expect(res.disposition).toBeNull()
     expect(res.directionMismatches).toBe(1)
   })
 
   it("dérive de valeur (currentValue ≠ live) → abandonné (R2)", () => {
-    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ currentValue: 21 })], 7) // live daily = 20
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ currentValue: 21 })], 7, STYLO_B) // live daily = 20
     expect(res.disposition).toBeNull()
   })
 
   it("kind absent du live (bascule de modalité) → abandonné", () => {
-    const res = assembleGroupedStyloDisposition([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }], [stCand({ kind: "daily" })], 7)
+    const res = assembleGroupedStyloDisposition([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }], [stCand({ kind: "daily" })], 7, STYLO_B)
     expect(res.disposition).toBeNull()
   })
 
   it("no-op (delta 0) → disposition null", () => {
-    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ proposedValue: 20 })], 7)
+    const res = assembleGroupedStyloDisposition([{ kind: "daily", value: 20 }], [stCand({ proposedValue: 20 })], 7, STYLO_B)
     expect(res.disposition).toBeNull()
   })
 })
 
-describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2, flag ENGINE_GROUPED_STYLO)", () => {
+describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2)", () => {
   beforeEach(() => vi.clearAllMocks())
-  afterEach(() => delete process.env.ENGINE_GROUPED_STYLO)
 
   /** Config stylo single : dose lente 20 U. À jeun HAUT (1,60 g/L > cible ~1,10) + nadir nocturne SÛR → basalTooLow (hausse). */
   function setupStyloSingle() {
@@ -685,12 +730,10 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     getStyloBasalSlots.mockResolvedValue([{ kind: "daily", value: 20 }] as never)
   }
 
-  it("flag ON — émet UNE SlotSetProposal basalRate de forme STYLO (kind daily, hausse), baseline injecté", async () => {
-    process.env.ENGINE_GROUPED_STYLO = "true"
+  it("émet UNE SlotSetProposal basalRate de forme STYLO (kind daily, hausse), baseline injecté", async () => {
     setupStyloSingle()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
 
-    expect(createEngine).not.toHaveBeenCalled() // plus de par-valeur stylo en mode groupé
     const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
     expect(call).toBeDefined()
     expect(call![0].proposer).toEqual({ userId: null, source: "algorithm" })
@@ -704,17 +747,14 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     expect(res.created).toBe(1)
   })
 
-  it("flag OFF (défaut) — voie par-valeur STYLO inchangée (createEngineProposal basalDoseKind daily, aucune groupée)", async () => {
+  it("US-2663 (S5) — GROUPED-ONLY STYLO : émet une proposition groupée (voie par-valeur retirée)", async () => {
     setupStyloSingle()
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createSet).not.toHaveBeenCalled()
-    expect(createEngine).toHaveBeenCalledTimes(1)
-    expect(createEngine.mock.calls[0]![0]).toMatchObject({ parameterType: "basalRate", basalDoseKind: "daily" })
+    expect(createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")).toBeDefined()
     expect(res.created).toBe(1)
   })
 
-  it("flag ON — split : la dose gagnante (soir, à jeun HAUT) est superposée, matin (pas de signal) inchangé", async () => {
-    process.env.ENGINE_GROUPED_STYLO = "true"
+  it("split : la dose gagnante (soir, à jeun HAUT) est superposée, matin (pas de signal) inchangé", async () => {
     mode.mockResolvedValue({ mode: "basalBolus", coherent: true } as never)
     getSettings.mockResolvedValue({
       carbRatios: [{ startHour: 12, endHour: 14, gramsPerUnit: 10 }], sensitivityFactors: [],
@@ -731,7 +771,6 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     getStyloBasalSlots.mockResolvedValue([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }] as never)
 
     const res = await proposalGeneratorService.generateForPatient(1, 99)
-    expect(createEngine).not.toHaveBeenCalled()
     const call = createSet.mock.calls.find((c) => c[0]?.parameterType === "basalRate")
     expect(call).toBeDefined()
     const disp = call![0].proposedSlots as { kind: string; value: number }[]
@@ -768,8 +807,7 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     getStyloBasalSlots.mockResolvedValue([{ kind: "morning", value: 12 }, { kind: "evening", value: 10 }] as never)
   }
 
-  it("flag ON — split : dé-escalade SOIR (hypo) prioritaire sur titration MATIN → SOIR gagnante émise, MATIN sans flag", async () => {
-    process.env.ENGINE_GROUPED_STYLO = "true"
+  it("split : dé-escalade SOIR (hypo) prioritaire sur titration MATIN → SOIR gagnante émise, MATIN sans flag", async () => {
     // Soir : à jeun en bande (1,1) + nadirs nocturnes hypo récurrente (0,55) → dé-escalade soir.
     // Matin : pré-dîner HAUT (1,7) + nadirs de jour sûrs (1,2) → titration matin (hausse). Priorité sécurité → soir.
     setupStyloSplit({ fastGl: 1.1, noctGl: 0.55, preGl: 1.7, dayNadGl: 1.2 })
@@ -788,8 +826,7 @@ describe("proposalGeneratorService — émission GROUPÉE STYLO (US-2663 S3e PR2
     expect(res.created).toBe(1)
   })
 
-  it("flag ON — split : DEUX dé-escalades → SOIR gagnante émise + MATIN perdante lève TOUJOURS son flag (fail-loud préservé)", async () => {
-    process.env.ENGINE_GROUPED_STYLO = "true"
+  it("split : DEUX dé-escalades → SOIR gagnante émise + MATIN perdante lève TOUJOURS son flag (fail-loud préservé)", async () => {
     // Soir : nadirs nocturnes hypo récurrente (0,55) → dé-escalade. Matin : pré-dîner en bande (1,1) +
     // nadirs de jour hypo récurrente (0,55) → dé-escalade. Gagnante = soir (priorité à égalité) ; perdante = matin.
     setupStyloSplit({ fastGl: 1.1, noctGl: 0.55, preGl: 1.1, dayNadGl: 0.55 })

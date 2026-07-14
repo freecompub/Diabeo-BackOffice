@@ -53,6 +53,15 @@ export const CLINICAL_BOUNDS = {
   FIXED_DOSE_MAX_DELTA_U: 2.0,
   FIXED_DOSE_PATIENT_MAX_DELTA_U: 1.0,
   /**
+   * Gardes ANTI-OVERFLOW de colonne (PAS des plafonds cliniques — la politique « pas de plafond dur » tient ;
+   * ces bornes ne servent qu'à ne jamais dépasser la précision Postgres `Decimal`). Source unique partagée
+   * (verrou anti-drift) entre les gardes `assertValid*` et le plafonnement moteur `CLAMP_BOUNDS` (US-2663 S5, D1).
+   *   - `COLUMN_OVERFLOW_GUARD_FIXED_DOSE_U` = `FixedDoseSlot.valueU` `Decimal(5,2)` → ≤ 999,99.
+   *   - `COLUMN_OVERFLOW_GUARD_STYLO_U`      = `BasalConfiguration.{daily,morning,evening}Dose` `Decimal(6,2)` → ≤ 9999,99.
+   */
+  COLUMN_OVERFLOW_GUARD_FIXED_DOSE_U: 999.99,
+  COLUMN_OVERFLOW_GUARD_STYLO_U: 9999.99,
+  /**
    * US-2651 (mode b) — cap de variation MOTEUR d'une proposition de dose fixe, en %.
    * Plus strict que le moteur basal/bolus (± 20 %) : la titration de dose fixe est plus lente.
    * La proposition retient le PLUS PETIT de ± ce % et ± `FIXED_DOSE_MAX_DELTA_U` (2 U).

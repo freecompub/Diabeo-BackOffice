@@ -3,7 +3,7 @@
  * @description US-2663 (S4, décision produit D3) — Garde clinique PATIENT de la voie manuelle GROUPÉE.
  *
  * Réplique, GÉNÉRALISÉS AU JEU, les invariants de sûreté que `adjustmentService.createProposal` (par-valeur,
- * US-2659) applique à une soumission PATIENT :
+ * US-2659 — voie retirée en US-2663 S5, cf. ADR #31) appliquait à une soumission PATIENT :
  *  - **BAISSE de basale** relâchée mais GATÉE : maturité par mode (stylo → CONFIRME ; pompe → INTERMEDIATE+ ;
  *    JUNIOR = refus), **accusé DKA** BLOQUANT pour le stylo (jour-de-maladie : réduire une basale lente expose
  *    à l'acidocétose), cap d'amplitude par créneau (stylo min(10 %, 2 U) ; pompe 10 %), snap d'incrément stylo ;

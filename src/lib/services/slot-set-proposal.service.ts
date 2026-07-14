@@ -234,7 +234,8 @@ export const slotSetProposalService = {
     if (!patient) throw new Error("patientNotFound")
 
     // 3. Frontière DISPOSITIF MÉDICAL (US-2651, §12.5) : jamais de proposition de dose pour un patient
-    //    NON INSULINÉ. Mode dérivé SERVEUR (fail-closed). Aligné sur adjustmentService.createProposal.
+    //    NON INSULINÉ. Mode dérivé SERVEUR (fail-closed). Aligné sur l'ex-`adjustmentService.createProposal`
+    //    (voie par-valeur retirée en US-2663 S5, cf. ADR #31).
     const { mode, maturityLevel } = await treatmentModeService.resolveTreatmentMode(patientId)
     if (mode === "nonInsulin") {
       // Parité `createProposal` (US-2651) : l'intention d'un PATIENT non insuliné n'est pas un cul-de-sac

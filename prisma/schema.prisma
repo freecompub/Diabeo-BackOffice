@@ -476,93 +476,94 @@ model User {
   updatedAt                DateTime          @updatedAt @map("updated_at")
 
   // Relations
-  patient                           Patient?
-  unitPreferences                   UserUnitPreferences?
-  notifPreferences                  UserNotifPreferences?
-  privacySettings                   UserPrivacySettings?
-  dayMoments                        UserDayMoment[]
-  uiStates                          UiStateSave[]
-  sessions                          Session[]
-  accounts                          Account[]
-  deviceSyncs                       DeviceDataSync[]
-  dashboardConfig                   DashboardConfiguration?
-  pushRegistrations                 PushDeviceRegistration[]
-  pushNotifLogs                     PushNotificationLog[]
-  pushScheduled                     PushScheduledNotification[]
-  auditLogs                         AuditLog[]
-  reviewedProposals                 AdjustmentProposal[]              @relation("ReviewedBy")
-  proposedAdjustments               AdjustmentProposal[]              @relation("ProposedBy")
-  slotSetProposalsProposed          SlotSetProposal[]                 @relation("SlotSetProposedBy")
-  slotSetProposalsReviewed          SlotSetProposal[]                 @relation("SlotSetReviewedBy")
-  reviewFlagsCreated                ClinicalReviewFlag[]              @relation("ReviewFlagCreatedBy")
-  reviewFlagsResolved               ClinicalReviewFlag[]              @relation("ReviewFlagResolvedBy")
-  prescribedInsulins                PatientInsulin[]                  @relation("PrescribedInsulins")
-  mydiabbyCredential                MyDiabbyCredential?
-  acknowledgedAlerts                EmergencyAlert[]                  @relation("AlertAcknowledger")
-  resolvedAlerts                    EmergencyAlert[]                  @relation("AlertResolver")
-  emergencyActions                  EmergencyAlertAction[]            @relation("EmergencyActionPerformer")
-  statusTransitionsBy               User[]                            @relation("UserStatusChangedBy")
-  statusTransitionedBy              User?                             @relation("UserStatusChangedBy", fields: [statusChangedBy], references: [id], onDelete: Restrict)
-  triggeredBackups                  BackupLog[]                       @relation("BackupTriggeredBy")
-  managedServices                   HealthcareService[]               @relation("HealthcareServiceManager")
-  createdPatientTags                PatientTag[]                      @relation("PatientTagCreator")
-  assignedPatientTags               PatientTagAssignment[]            @relation("PatientTagAssigner")
+  patient                               Patient?
+  unitPreferences                       UserUnitPreferences?
+  notifPreferences                      UserNotifPreferences?
+  privacySettings                       UserPrivacySettings?
+  dayMoments                            UserDayMoment[]
+  uiStates                              UiStateSave[]
+  sessions                              Session[]
+  accounts                              Account[]
+  deviceSyncs                           DeviceDataSync[]
+  dashboardConfig                       DashboardConfiguration?
+  pushRegistrations                     PushDeviceRegistration[]
+  pushNotifLogs                         PushNotificationLog[]
+  pushScheduled                         PushScheduledNotification[]
+  auditLogs                             AuditLog[]
+  reviewedProposals                     AdjustmentProposal[]              @relation("ReviewedBy")
+  proposedAdjustments                   AdjustmentProposal[]              @relation("ProposedBy")
+  slotSetProposalsProposed              SlotSetProposal[]                 @relation("SlotSetProposedBy")
+  slotSetProposalsReviewed              SlotSetProposal[]                 @relation("SlotSetReviewedBy")
+  reviewFlagsCreated                    ClinicalReviewFlag[]              @relation("ReviewFlagCreatedBy")
+  reviewFlagsResolved                   ClinicalReviewFlag[]              @relation("ReviewFlagResolvedBy")
+  prescribedInsulins                    PatientInsulin[]                  @relation("PrescribedInsulins")
+  mydiabbyCredential                    MyDiabbyCredential?
+  acknowledgedAlerts                    EmergencyAlert[]                  @relation("AlertAcknowledger")
+  resolvedAlerts                        EmergencyAlert[]                  @relation("AlertResolver")
+  emergencyActions                      EmergencyAlertAction[]            @relation("EmergencyActionPerformer")
+  statusTransitionsBy                   User[]                            @relation("UserStatusChangedBy")
+  statusTransitionedBy                  User?                             @relation("UserStatusChangedBy", fields: [statusChangedBy], references: [id], onDelete: Restrict)
+  triggeredBackups                      BackupLog[]                       @relation("BackupTriggeredBy")
+  managedServices                       HealthcareService[]               @relation("HealthcareServiceManager")
+  createdPatientTags                    PatientTag[]                      @relation("PatientTagCreator")
+  assignedPatientTags                   PatientTagAssignment[]            @relation("PatientTagAssigner")
   // Groupe 3 — Équipe & Communication
-  createdMessageTemplates           MessageTemplate[]                 @relation("MessageTemplateCreator")
-  readReceipts                      ReadReceipt[]                     @relation("ReadReceiptUser")
-  verifiedProposalActualizations    AdjustmentProposalActualization[] @relation("ProposalActualizationVerifier")
-  consultationNotes                 ConsultationNote[]                @relation("ConsultationNoteAuthor")
-  delegationsRequested              DelegationRequest[]               @relation("DelegationFrom")
-  delegationsToReview               DelegationRequest[]               @relation("DelegationTo")
-  reviewedDelegations               DelegationRequest[]               @relation("DelegationReviewer")
-  handoffsSent                      HandoffNote[]                     @relation("HandoffFrom")
-  handoffsReceived                  HandoffNote[]                     @relation("HandoffTo")
-  createdPatientGroups              PatientGroup[]                    @relation("PatientGroupCreator")
-  assignedPatientGroups             PatientGroupAssignment[]          @relation("PatientGroupAssigner")
-  invoicedTeleconsultActes          TeleconsultationActe[]            @relation("TeleconsultInvoicer")
+  createdMessageTemplates               MessageTemplate[]                 @relation("MessageTemplateCreator")
+  readReceipts                          ReadReceipt[]                     @relation("ReadReceiptUser")
+  verifiedProposalActualizations        AdjustmentProposalActualization[] @relation("ProposalActualizationVerifier")
+  verifiedSlotSetProposalActualizations SlotSetProposalActualization[]    @relation("SlotSetProposalActualizationVerifier")
+  consultationNotes                     ConsultationNote[]                @relation("ConsultationNoteAuthor")
+  delegationsRequested                  DelegationRequest[]               @relation("DelegationFrom")
+  delegationsToReview                   DelegationRequest[]               @relation("DelegationTo")
+  reviewedDelegations                   DelegationRequest[]               @relation("DelegationReviewer")
+  handoffsSent                          HandoffNote[]                     @relation("HandoffFrom")
+  handoffsReceived                      HandoffNote[]                     @relation("HandoffTo")
+  createdPatientGroups                  PatientGroup[]                    @relation("PatientGroupCreator")
+  assignedPatientGroups                 PatientGroupAssignment[]          @relation("PatientGroupAssigner")
+  invoicedTeleconsultActes              TeleconsultationActe[]            @relation("TeleconsultInvoicer")
   // Groupe 5 — Insuline & Repas
-  createdInsulinAdjustmentTemplates InsulinAdjustmentTemplate[]       @relation("InsulinAdjustmentTemplateCreator")
-  validatedDiabetesEvents           DiabetesEvent[]                   @relation("DiabetesEventValidator")
-  uploadedMealPhotos                MealPhoto[]                       @relation("MealPhotoUploader")
+  createdInsulinAdjustmentTemplates     InsulinAdjustmentTemplate[]       @relation("InsulinAdjustmentTemplateCreator")
+  validatedDiabetesEvents               DiabetesEvent[]                   @relation("DiabetesEventValidator")
+  uploadedMealPhotos                    MealPhoto[]                       @relation("MealPhotoUploader")
   // Groupe 8 — RDV
-  createdMemberUnavailabilities     MemberUnavailability[]            @relation("MemberUnavailabilityCreator")
+  createdMemberUnavailabilities         MemberUnavailability[]            @relation("MemberUnavailabilityCreator")
   // Groupe 8 — i18n & Interopérabilité (Batch 1)
-  createdCountryCurrencies          CountryCurrency[]                 @relation("CountryCurrencyCreator")
-  createdCountryTaxRules            CountryTaxRule[]                  @relation("CountryTaxRuleCreator")
-  createdHealthcareRegulations      HealthcareRegulation[]            @relation("HealthcareRegulationCreator")
-  createdFhirInteroperability       FhirInteroperability[]            @relation("FhirInteroperabilityCreator")
-  createdFhirAllowedSystems         FhirAllowedSystem[]               @relation("FhirAllowedSystemCreator")
+  createdCountryCurrencies              CountryCurrency[]                 @relation("CountryCurrencyCreator")
+  createdCountryTaxRules                CountryTaxRule[]                  @relation("CountryTaxRuleCreator")
+  createdHealthcareRegulations          HealthcareRegulation[]            @relation("HealthcareRegulationCreator")
+  createdFhirInteroperability           FhirInteroperability[]            @relation("FhirInteroperabilityCreator")
+  createdFhirAllowedSystems             FhirAllowedSystem[]               @relation("FhirAllowedSystemCreator")
   // Groupe 10 Mirror V1 — Batches A+B
-  createdConfigVersions             ConfigVersion[]                   @relation("ConfigVersionCreator")
-  validatedConfigVersions           ConfigVersion[]                   @relation("ConfigVersionValidator")
-  createdAlertThresholdTemplates    AlertThresholdTemplate[]          @relation("AlertThresholdTemplateCreator")
-  acknowledgedRiskScores            PatientRiskScore[]                @relation("PatientRiskScoreAcknowledger")
+  createdConfigVersions                 ConfigVersion[]                   @relation("ConfigVersionCreator")
+  validatedConfigVersions               ConfigVersion[]                   @relation("ConfigVersionValidator")
+  createdAlertThresholdTemplates        AlertThresholdTemplate[]          @relation("AlertThresholdTemplateCreator")
+  acknowledgedRiskScores                PatientRiskScore[]                @relation("PatientRiskScoreAcknowledger")
   // Groupe 7 Batch 1 — Facturation (US-2103/2105/2107)
-  createdInvoices                   Invoice[]                         @relation("InvoiceCreator")
+  createdInvoices                       Invoice[]                         @relation("InvoiceCreator")
   // Groupe 9 — Admin & Ops (US-2137 DataBreach)
-  declaredDataBreaches              DataBreach[]                      @relation("DataBreachDeclarer")
+  declaredDataBreaches                  DataBreach[]                      @relation("DataBreachDeclarer")
   // US-2076 scope A — Messagerie sécurisée 1-to-1
-  messagesSent                      Message[]                         @relation("MessageSender")
-  messagesReceived                  Message[]                         @relation("MessageRecipient")
+  messagesSent                          Message[]                         @relation("MessageSender")
+  messagesReceived                      Message[]                         @relation("MessageRecipient")
   // Groupe 4 — Devices & Sync (US-2091/2092)
-  revokedPatientDevices             PatientDevice[]                   @relation("PatientDeviceRevoker")
-  createdSupportedDevices           SupportedDevice[]                 @relation("SupportedDeviceCreator")
+  revokedPatientDevices                 PatientDevice[]                   @relation("PatientDeviceRevoker")
+  createdSupportedDevices               SupportedDevice[]                 @relation("SupportedDeviceCreator")
   // US-2026 H5 review — Forensique : qui a saisi cet INS / pour qui.
-  insSetByUser                      User?                             @relation("InsSetter", fields: [insSetByUserId], references: [id], onDelete: SetNull)
-  insSetForUsers                    User[]                            @relation("InsSetter")
+  insSetByUser                          User?                             @relation("InsSetter", fields: [insSetByUserId], references: [id], onDelete: SetNull)
+  insSetForUsers                        User[]                            @relation("InsSetter")
   /// US-2603 — switcher patient : dossiers récemment vus / épinglés par ce PS.
-  recentlyViewedPatients            RecentlyViewedPatient[]
-  pinnedPatients                    PinnedPatient[]
+  recentlyViewedPatients                RecentlyViewedPatient[]
+  pinnedPatients                        PinnedPatient[]
   /// US-2605 — séances de revue ouvertes + comptes rendus rédigés par ce PS.
-  encountersOpened                  Encounter[]                       @relation("EncounterOpener")
-  consultationReportsAuthored       ConsultationReportAddendum[]      @relation("ConsultationReportAuthor")
+  encountersOpened                      Encounter[]                       @relation("EncounterOpener")
+  consultationReportsAuthored           ConsultationReportAddendum[]      @relation("ConsultationReportAuthor")
   /// US-2610/F4 — appartenances scopées (N-N user↔service) porteuses des capacités Q1/Q2.
-  memberships                       HealthcareMembership[]
+  memberships                           HealthcareMembership[]
   /// F4 — preuves d'enregistrement PS (multi-pays) + preuves vérifiées par ce PS.
-  professionalRegistrations         ProfessionalRegistration[]        @relation("RegistrationSubject")
-  professionalRegistrationsVerified ProfessionalRegistration[]        @relation("RegistrationVerifier")
+  professionalRegistrations             ProfessionalRegistration[]        @relation("RegistrationSubject")
+  professionalRegistrationsVerified     ProfessionalRegistration[]        @relation("RegistrationVerifier")
   /// F2 — politiques de vérification posées par ce SYSTEM_ADMIN.
-  verificationPoliciesSet           VerificationPolicy[]              @relation("VerificationPolicySetter")
+  verificationPoliciesSet               VerificationPolicy[]              @relation("VerificationPolicySetter")
 
   /// US-2026 — INS unique anti-doublon RNIPP. PG default NULLS DISTINCT
   /// autorise plusieurs NULL (PS / ADMIN sans INS renseigne).
@@ -790,6 +791,8 @@ model Patient {
   groupAssignments       PatientGroupAssignment[]
   /// US-2065 — Accusés patient sur AdjustmentProposal (review PR #390 H10).
   proposalAcks           AdjustmentProposalAck[]
+  /// US-2663 (S5/c4) — Accusés patient sur SlotSetProposal (proposition GROUPÉE, grouped-only).
+  slotSetProposalAcks    SlotSetProposalAck[]
   /// US-2057 — Photos repas (review PR #391 H5 FK explicite).
   mealPhotos             MealPhoto[]
   /// Groupe 10 Batch A — config versionning hub + features.
@@ -829,40 +832,43 @@ model Patient {
 /// (`WHERE status = 'pending'`), défini en SQL uniquement (Prisma ne modélise pas le WHERE côté `@@index`,
 /// cf. migration 20260714100000).
 model SlotSetProposal {
-  id               String              @id @default(uuid())
-  patientId        Int                 @map("patient_id")
-  patient          Patient             @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  parameterType    AdjustableParameter @map("parameter_type") // isf/icr/basalRate/fixedDose (leviers à jeu groupé)
+  id                    String                        @id @default(uuid())
+  patientId             Int                           @map("patient_id")
+  patient               Patient                       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  parameterType         AdjustableParameter           @map("parameter_type") // isf/icr/basalRate/fixedDose (leviers à jeu groupé)
   /// Disposition proposée (JSON — pas de PHI, valeurs de config), union discriminée par la FORME du créneau :
   /// ISF/ICR `{ startHour, endHour, value, mealLabel? }` · basale POMPE `{ startTime, endTime, rate }` · basale
   /// STYLO `{ kind, value }` (U totales) · dose fixe `{ usage, moment, value }`. Cf. `src/lib/insulin/grouped-proposal.ts`.
   /// US-2663 — couvre désormais ISF/ICR + basale (pompe & stylo) + dose fixe (généralisation S3 achevée côté modèle).
-  proposedSlots    Json                @map("proposed_slots")
+  proposedSlots         Json                          @map("proposed_slots")
   /// US-2663 (S0) — provenance dérivée SERVEUR (ADR #27), jamais du body. `patient` par défaut (voie
   /// patient historique US-2657) ; `nurse`/`doctor`/`algorithm` à venir (S3/S4).
-  source           ProposalSource      @default(patient) @map("source")
+  source                ProposalSource                @default(patient) @map("source")
   /// US-2663 (S0) — snapshot de la base PAR créneau à la génération, même encodage que `proposedSlots`.
   /// Pièce maîtresse du compare-and-swap par créneau à l'acceptation (S1, garde-fou MDR anti-dérive de base).
   /// Nullable : propositions legacy (pré-US-2663) sans snapshot → S1 les traite en full-replace fail-closed.
-  baselineSlots    Json?               @map("baseline_slots")
+  baselineSlots         Json?                         @map("baseline_slots")
   /// US-2663 (S3b-0a) — rationale MOTEUR par créneau CHANGÉ (`[{ startHour, reason, confidence,
   /// supportingEvents, changePercent?, averageObservedValue?, analysisPeriod? }]`). Requise applicativement
   /// quand `source = algorithm` (decision-support médecin + traçabilité HDS de la recommandation de dose) ;
   /// NULL pour les propositions humaines (pas de rationale algorithmique). Pas de PHI (config + métriques).
-  rationale        Json?               @map("rationale")
-  status           ProposalStatus      @default(pending)
-  proposedByUserId Int?                @map("proposed_by_user_id")
-  proposer         User?               @relation("SlotSetProposedBy", fields: [proposedByUserId], references: [id], onDelete: SetNull)
-  reviewedByUserId Int?                @map("reviewed_by_user_id")
-  reviewer         User?               @relation("SlotSetReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  rationale             Json?                         @map("rationale")
+  status                ProposalStatus                @default(pending)
+  proposedByUserId      Int?                          @map("proposed_by_user_id")
+  proposer              User?                         @relation("SlotSetProposedBy", fields: [proposedByUserId], references: [id], onDelete: SetNull)
+  reviewedByUserId      Int?                          @map("reviewed_by_user_id")
+  reviewer              User?                         @relation("SlotSetReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  /// US-2663 (S5/c4) — accusé patient (1:1) + vérification d'application réelle (1:1) portés en grouped-only.
+  ack                   SlotSetProposalAck?
+  actualization         SlotSetProposalActualization?
   /// US-2663 (S4, D3) — accusé DKA/jour-de-maladie d'une soumission PATIENT groupée contenant ≥ 1 BAISSE de
   /// basale STYLO (US-2659). Décision produit D3 : UN SEUL accusé couvre TOUTES les baisses stylo du jeu.
   /// Timestamp de consentement (immuable, jamais réécrit — parité `AdjustmentProposal.sickDayAcknowledgedAt`).
   /// NULL pour toute soumission sans baisse stylo, pour les pros (nurse/doctor, non gatés) et le moteur.
-  sickDayAcknowledgedAt DateTime?      @map("sick_day_acknowledged_at") @db.Timestamptz()
+  sickDayAcknowledgedAt DateTime?                     @map("sick_day_acknowledged_at") @db.Timestamptz()
   // Timestamptz — aligné sur le modèle sœur `AdjustmentProposal` (tri/affichage stables cross-timezone).
-  createdAt        DateTime            @default(now()) @map("created_at") @db.Timestamptz()
-  reviewedAt       DateTime?           @map("reviewed_at") @db.Timestamptz()
+  createdAt             DateTime                      @default(now()) @map("created_at") @db.Timestamptz()
+  reviewedAt            DateTime?                     @map("reviewed_at") @db.Timestamptz()
 
   // `createdAt` en 3e colonne : couvre `listSetProposals` (where patientId[+status] orderBy createdAt desc),
   // comme `AdjustmentProposal`.
@@ -2805,6 +2811,53 @@ model AdjustmentProposalActualization {
   /// quand un User est anonymisé.
   @@index([verifiedBy])
   @@map("adjustment_proposal_actualizations")
+}
+
+/// US-2663 (S5/c4) — Accusé patient sur une SlotSetProposal (proposition GROUPÉE).
+/// Port grouped-only de `AdjustmentProposalAck` (US-2065) : la voie par-valeur étant
+/// retirée (S5), l'accusé patient (lecture / acceptation / rejet côté app mobile) cible
+/// désormais la disposition GROUPÉE. **Décision produit D3 : 1 accusé = jeu entier**
+/// (relation 1:1 via `slotSetProposalId @unique`).
+model SlotSetProposalAck {
+  id                Int       @id @default(autoincrement())
+  slotSetProposalId String    @unique @map("slot_set_proposal_id")
+  patientId         Int       @map("patient_id")
+  acknowledged      Boolean   @default(false)
+  accepted          Boolean?
+  readAt            DateTime? @map("read_at") @db.Timestamptz()
+  respondedAt       DateTime? @map("responded_at") @db.Timestamptz()
+  /// Commentaire libre patient (max 500 char). Chiffré AES-256-GCM si non-null.
+  comment           String?
+
+  proposal SlotSetProposal @relation(fields: [slotSetProposalId], references: [id], onDelete: Cascade)
+  /// FK explicite vers Patient (parité `AdjustmentProposalAck` review #390 H10) : empêche
+  /// le drift `patient_id` ↔ proposal.patient_id et cascade le soft-delete RGPD.
+  patient  Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+
+  @@index([patientId])
+  @@map("slot_set_proposal_acks")
+}
+
+/// US-2663 (S5/c4) — Vérification qu'une SlotSetProposal (proposition GROUPÉE) a été
+/// appliquée dans le monde réel (sur le device). Port grouped-only de
+/// `AdjustmentProposalActualization` (US-2066). `effectiveAt` = quand le réglage a pris
+/// effet (peut différer du `respondedAt` patient). 1:1 via `slotSetProposalId @unique`.
+model SlotSetProposalActualization {
+  id                Int       @id @default(autoincrement())
+  slotSetProposalId String    @unique @map("slot_set_proposal_id")
+  effectiveAt       DateTime? @map("effective_at") @db.Timestamptz()
+  /// Source de vérification : "device-sync" / "manual-ps" / "patient-confirmed".
+  verifiedVia       String    @map("verified_via") @db.VarChar(40)
+  /// PS ayant confirmé (NULL si vérification auto via sync device).
+  verifiedBy        Int?      @map("verified_by")
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  proposal SlotSetProposal @relation(fields: [slotSetProposalId], references: [id], onDelete: Cascade)
+  verifier User?           @relation("SlotSetProposalActualizationVerifier", fields: [verifiedBy], references: [id], onDelete: SetNull)
+
+  /// Parité #390 L7 — index sur la FK SetNull (évite le seq-scan à l'anonymisation User).
+  @@index([verifiedBy])
+  @@map("slot_set_proposal_actualizations")
 }
 
 /// US-2068 — Note de consultation structurée. `content` chiffré AES-256-GCM

@@ -319,10 +319,10 @@ export default async function PatientReviewPage({
       if (styloProposed && styloProposed.length > 0) {
         const baseline = p.baselineSlots == null ? null : parseStyloSlots(p.baselineSlots)
         const styloCasOpts = { keyOf: (s: StyloBasalSlot) => s.kind, valueOf: (s: StyloBasalSlot) => s.value }
-        // US-2662 (parité voie par-valeur + dose fixe groupée) — avertissement dose élevée NON bloquant, dérivé
+        // US-2662 (parité + dose fixe groupée) — avertissement dose élevée NON bloquant, dérivé
         // SERVEUR (bornes cliniques jamais côté client) : dose stylo proposée > `MDI_BASAL_WARN_U` (80 U totales,
-        // DT2 insulino-résistant / U300 / dégludec). Sans ce mapping, le badge livré en US-2662 disparaîtrait de
-        // la revue dès le passage du flag `ENGINE_GROUPED_STYLO` ON.
+        // DT2 insulino-résistant / U300 / dégludec). Le badge livré en US-2662 s'applique à l'émission groupée
+        // STYLO (grouped-only depuis US-2663 S5).
         const rows = diffStyloBasalSlots(liveStylo, styloProposed).map((row) => ({
           ...row,
           highDoseWarning: row.proposedValue != null && row.proposedValue > CLINICAL_BOUNDS.MDI_BASAL_WARN_U,

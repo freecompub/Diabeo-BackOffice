@@ -5,8 +5,8 @@
  * Domaine couvert (10 US, ~10 SP) :
  *  - US-2078 MessageTemplate
  *  - US-2080 ReadReceipt (générique)
- *  - US-2065 ProposalAck (patient)
- *  - US-2066 ProposalActualization
+ *  - US-2065 ProposalAck (patient) + US-2663 S5/c4 SlotSetProposalAck (grouped-only, 1 accusé = jeu entier)
+ *  - US-2066 ProposalActualization + US-2663 S5/c4 SlotSetProposalActualization (grouped-only)
  *  - US-2068 ConsultationNote (chiffré)
  *  - US-2072 TeleconsultActe
  *  - US-2083 DelegationRequest
@@ -378,6 +378,135 @@ export const proposalActualizationService = {
   async getProposalPatientId(proposalId: string): Promise<number | null> {
     const p = await prisma.adjustmentProposal.findUnique({
       where: { id: proposalId }, select: { patientId: true },
+    })
+    return p?.patientId ?? null
+  },
+}
+
+// ─────────────────────────────────────────────────────────────
+// US-2663 (S5/c4) — Accusé patient sur une SlotSetProposal (proposition GROUPÉE)
+// Port grouped-only de `proposalAckService` (US-2065). Décision produit D3 : 1 accusé
+// = jeu entier (relation 1:1 via `slotSetProposalId @unique`). Sémantique/audit identiques
+// (resource `PROPOSAL_ACK`, `metadata.model = "slotSet"` pour distinguer en forensics).
+// ─────────────────────────────────────────────────────────────
+
+export const slotSetProposalAckService = {
+  /** Marque une proposition GROUPÉE comme LUE par le patient (upsert idempotent). */
+  async markRead(
+    slotSetProposalId: string,
+    patientId: number,
+    auditUserId: number,         // H2 — propagé depuis la route
+    ctx?: AuditContext,
+  ) {
+    const ack = await prisma.slotSetProposalAck.upsert({
+      where: { slotSetProposalId },
+      create: { slotSetProposalId, patientId, acknowledged: true, readAt: new Date() },
+      update: { acknowledged: true, readAt: new Date() },
+      select: { id: true, readAt: true },
+    })
+    await auditService.log({
+      userId: auditUserId,
+      action: "READ", resource: "PROPOSAL_ACK", resourceId: slotSetProposalId,
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { patientId, slotSetProposalId, model: "slotSet", kind: "read" },
+    })
+    return ack
+  },
+
+  /** Enregistre la RÉPONSE patient (acceptation/rejet + commentaire chiffré) sur le jeu entier. */
+  async respond(
+    slotSetProposalId: string, patientId: number,
+    decision: { accepted: boolean; comment?: string },
+    auditUserId: number,         // H2
+    ctx?: AuditContext,
+  ) {
+    // L8 — length-check défensif au niveau service (miroir voie par-valeur).
+    if (decision.comment && decision.comment.length > ACK_COMMENT_MAX) {
+      throw new ValidationError("comment")
+    }
+    const encrypted = decision.comment ? encryptField(decision.comment) : null
+    const ack = await prisma.slotSetProposalAck.upsert({
+      where: { slotSetProposalId },
+      create: {
+        slotSetProposalId, patientId,
+        acknowledged: true, readAt: new Date(),
+        accepted: decision.accepted, respondedAt: new Date(),
+        comment: encrypted,
+      },
+      update: {
+        accepted: decision.accepted, respondedAt: new Date(),
+        comment: encrypted,
+      },
+      select: { id: true, accepted: true, respondedAt: true },
+    })
+    await auditService.log({
+      userId: auditUserId,
+      action: "UPDATE", resource: "PROPOSAL_ACK", resourceId: slotSetProposalId,
+      ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+      metadata: { patientId, slotSetProposalId, model: "slotSet", accepted: decision.accepted, kind: "respond" },
+    })
+    return ack
+  },
+}
+
+// ─────────────────────────────────────────────────────────────
+// US-2663 (S5/c4) — Actualisation (application réelle) d'une SlotSetProposal
+// Port grouped-only de `proposalActualizationService` (US-2066, garde H4 anti-écrasement).
+// ─────────────────────────────────────────────────────────────
+
+export const slotSetProposalActualizationService = {
+  async record(
+    slotSetProposalId: string,
+    input: { verifiedVia: VerifyVia; effectiveAt?: Date },
+    auditUserId: number,
+    ctx?: AuditContext,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const proposal = await tx.slotSetProposal.findUnique({
+        where: { id: slotSetProposalId }, select: { patientId: true },
+      })
+      if (!proposal) throw new NotFoundError()
+
+      // H4 — refuse d'écraser silencieusement une actualisation antérieure de source différente.
+      // Re-record autorisé pour la MÊME source (`device-sync` idempotent).
+      const existing = await tx.slotSetProposalActualization.findUnique({
+        where: { slotSetProposalId }, select: { verifiedVia: true },
+      })
+      if (existing && existing.verifiedVia !== input.verifiedVia) {
+        throw new ValidationError("alreadyActualized")
+      }
+
+      const row = await tx.slotSetProposalActualization.upsert({
+        where: { slotSetProposalId },
+        create: {
+          slotSetProposalId,
+          verifiedVia: input.verifiedVia,
+          effectiveAt: input.effectiveAt ?? new Date(),
+          verifiedBy: input.verifiedVia === "device-sync" ? null : auditUserId,
+        },
+        update: {
+          effectiveAt: input.effectiveAt ?? new Date(),
+        },
+      })
+      await auditService.logWithTx(tx, {
+        userId: auditUserId,
+        action: existing ? "UPDATE" : "CREATE",
+        resource: "PROPOSAL_ACTUALIZATION",
+        resourceId: slotSetProposalId,
+        ipAddress: ctx?.ipAddress, userAgent: ctx?.userAgent, requestId: ctx?.requestId,
+        metadata: {
+          patientId: proposal.patientId,
+          slotSetProposalId, model: "slotSet", verifiedVia: input.verifiedVia,
+        },
+      })
+      return row
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable })
+  },
+
+  /** RBAC helper : patient propriétaire d'une SlotSetProposal (pour `canAccessPatient` en amont). */
+  async getProposalPatientId(slotSetProposalId: string): Promise<number | null> {
+    const p = await prisma.slotSetProposal.findUnique({
+      where: { id: slotSetProposalId }, select: { patientId: true },
     })
     return p?.patientId ?? null
   },
