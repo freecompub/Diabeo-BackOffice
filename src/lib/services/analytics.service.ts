@@ -276,21 +276,20 @@ export const analyticsService = {
         // Borne haute = maintenant : écarte les saisies datées dans le futur
         // (erreur de saisie) qui fausseraient total/%/fréquence.
         date: { gte: since, lte: now },
-        OR: [{ glycemiaGl: { not: null } }, { glycemiaMgdl: { not: null } }],
+        // ADR #32 — unité canonique g/L (backfill S1 : `glycemia_gl` toujours peuplé).
+        glycemiaGl: { not: null },
       },
-      select: { glycemiaGl: true, glycemiaMgdl: true, time: true },
+      select: { glycemiaGl: true, time: true },
     })
 
-    // Valeur en g/L (préfère `glycemiaGl`, sinon mg/dL → g/L), filtrée sur la
-    // plage physiologique valide comme les autres agrégats. NB : ce filtre
-    // écarte aussi les extrêmes « LO/HI » du lecteur (< 0,20 / > 6,00 g/L) —
-    // cohérent avec les agrégats CGM et le rejet des valeurs d'erreur capteur ;
-    // impact négligeable (rareté), tracé ici pour transparence (revue médicale).
+    // Valeur en g/L, filtrée sur la plage physiologique valide comme les autres
+    // agrégats. NB : ce filtre écarte aussi les extrêmes « LO/HI » du lecteur
+    // (< 0,20 / > 6,00 g/L) — cohérent avec les agrégats CGM et le rejet des
+    // valeurs d'erreur capteur ; impact négligeable (rareté), tracé ici pour
+    // transparence (revue médicale).
     const valid = rows
       .map((r) => {
-        const gl = r.glycemiaGl != null
-          ? decimalToNumber(r.glycemiaGl)
-          : r.glycemiaMgdl != null ? decimalToNumber(r.glycemiaMgdl) / 100 : NaN
+        const gl = r.glycemiaGl != null ? decimalToNumber(r.glycemiaGl) : NaN
         // `time` est une heure MURALE locale (Time sans fuseau) → minutes du jour.
         const timeMinutes = r.time ? r.time.getUTCHours() * 60 + r.time.getUTCMinutes() : null
         return { gl, timeMinutes }
@@ -375,9 +374,10 @@ export const analyticsService = {
         patientId,
         date: { gte: since, lte: now },
         time: { not: null },
-        OR: [{ glycemiaGl: { not: null } }, { glycemiaMgdl: { not: null } }],
+        // ADR #32 — unité canonique g/L (backfill S1 : `glycemia_gl` toujours peuplé).
+        glycemiaGl: { not: null },
       },
-      select: { glycemiaGl: true, glycemiaMgdl: true, time: true },
+      select: { glycemiaGl: true, time: true },
     })
 
     if (!opts?.skipAudit) {
@@ -398,12 +398,7 @@ export const analyticsService = {
     const perMoment = new Map<(typeof DAY_MOMENTS)[number], number[]>()
     for (const m of DAY_MOMENTS) perMoment.set(m, [])
     for (const r of rows) {
-      const gl =
-        r.glycemiaGl != null
-          ? decimalToNumber(r.glycemiaGl)
-          : r.glycemiaMgdl != null
-            ? decimalToNumber(r.glycemiaMgdl) / 100
-            : NaN
+      const gl = r.glycemiaGl != null ? decimalToNumber(r.glycemiaGl) : NaN
       if (!Number.isFinite(gl) || gl < CGM_AGGREGATE_RANGE_GL.MIN || gl > CGM_AGGREGATE_RANGE_GL.MAX) continue
       if (!r.time) continue
       const hour = r.time.getUTCHours() + r.time.getUTCMinutes() / 60
@@ -476,9 +471,10 @@ export const analyticsService = {
         patientId,
         date: { gte: since, lte: now },
         time: { not: null },
-        OR: [{ glycemiaGl: { not: null } }, { glycemiaMgdl: { not: null } }],
+        // ADR #32 — unité canonique g/L (backfill S1 : `glycemia_gl` toujours peuplé).
+        glycemiaGl: { not: null },
       },
-      select: { glycemiaGl: true, glycemiaMgdl: true, time: true, date: true },
+      select: { glycemiaGl: true, time: true, date: true },
     })
 
     if (!opts?.skipAudit) {
@@ -502,12 +498,7 @@ export const analyticsService = {
       night: new Map(),
     }
     for (const r of rows) {
-      const gl =
-        r.glycemiaGl != null
-          ? decimalToNumber(r.glycemiaGl)
-          : r.glycemiaMgdl != null
-            ? decimalToNumber(r.glycemiaMgdl) / 100
-            : NaN
+      const gl = r.glycemiaGl != null ? decimalToNumber(r.glycemiaGl) : NaN
       if (!Number.isFinite(gl) || gl < CGM_AGGREGATE_RANGE_GL.MIN || gl > CGM_AGGREGATE_RANGE_GL.MAX) continue
       if (!r.time) continue
       const minutesOfDay = r.time.getUTCHours() * 60 + r.time.getUTCMinutes()
@@ -656,9 +647,9 @@ export const analyticsService = {
       source === "bgm"
         ? // Revue #612 : (1) `${from}::date` — sinon `date >= timestamptz`
           // caste la COLONNE (premier jour exclu + index inutilisable) ;
-          // (2) COALESCE `glycemia_gl` / `glycemia_mgdl` (relevés mg/dL-only,
-          // cf. `bgmStats`) ; (3) filtre plage physiologique `CGM_AGGREGATE_
-          // RANGE_GL` (les valeurs LO/HI lecteur ne polluent pas min/max).
+          // (2) ADR #32 — unité canonique g/L (`glycemia_gl`, backfill S1) ;
+          // (3) filtre plage physiologique `CGM_AGGREGATE_RANGE_GL` (les
+          // valeurs LO/HI lecteur ne polluent pas min/max).
           await prisma.$queryRaw<RawDailyRow[]>`
             SELECT to_char(day, 'YYYY-MM-DD') AS day,
                    AVG(v)::float8 AS avg_gl,
@@ -667,11 +658,11 @@ export const analyticsService = {
                    COUNT(*)::int AS n,
                    COUNT(*) FILTER (WHERE v >= ${thresholds.low} AND v <= ${thresholds.ok})::int AS in_target
             FROM (
-              SELECT date AS day, COALESCE(glycemia_gl, glycemia_mgdl / 100.0) AS v
+              SELECT date AS day, glycemia_gl AS v
               FROM glycemia_entries
               WHERE patient_id = ${patientId}
                 AND date >= ${from}::date AND date <= ${to}::date
-                AND (glycemia_gl IS NOT NULL OR glycemia_mgdl IS NOT NULL)
+                AND glycemia_gl IS NOT NULL
             ) s
             WHERE v >= ${CGM_AGGREGATE_RANGE_GL.MIN} AND v <= ${CGM_AGGREGATE_RANGE_GL.MAX}
             GROUP BY day

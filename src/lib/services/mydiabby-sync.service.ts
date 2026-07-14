@@ -18,6 +18,8 @@
 
 import { prisma } from "@/lib/db/client"
 import { encryptField, safeDecryptField } from "@/lib/crypto/fields"
+// Conversion d'unités : source de vérité unique = `@/lib/glucose/units` (ADR #32).
+import { mgdlToGl } from "@/lib/glucose/units"
 import {
   authenticate,
   getAccount,
@@ -494,7 +496,7 @@ async function syncHealthData(
     const result = await prisma.cgmEntry.createMany({
       data: batch.map((e) => ({
         patientId: patient.id,
-        valueGl: e.glucoseValue / 100.0, // mg/dL → g/L for storage
+        valueGl: mgdlToGl(e.glucoseValue), // mg/dL → g/L (unité canonique)
         timestamp: e.timestamp,
         isManual: e.isManual,
       })),
@@ -512,8 +514,7 @@ async function syncHealthData(
         patientId: patient.id,
         date: new Date(e.timestamp.toISOString().split("T")[0]), // date-only
         time: e.timestamp, // time component
-        glycemiaGl: e.glucoseValue / 100.0, // mg/dL → g/L
-        glycemiaMgdl: e.glucoseValue,
+        glycemiaGl: mgdlToGl(e.glucoseValue), // mg/dL → g/L (unité canonique, ADR #32)
       })),
     })
     glycemiaCount += result.count

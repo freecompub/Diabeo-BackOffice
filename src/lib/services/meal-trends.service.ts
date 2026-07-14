@@ -25,6 +25,8 @@
 import { DiabetesEventType, type Pathology } from "@prisma/client"
 import { prisma } from "@/lib/db/client"
 import { decimalToNumber } from "@/lib/db/decimal"
+// Conversion d'unités : source de vérité unique = `@/lib/glucose/units` (ADR #32).
+import { glToMgdl } from "@/lib/glucose/units"
 import { auditService, type AuditContext } from "@/lib/services/audit.service"
 import { getCgmDefaults } from "@/lib/services/objectives.service"
 import { CGM_AGGREGATE_RANGE_GL, MEAL_TREND, CLINICAL_BOUNDS } from "@/lib/clinical-bounds"
@@ -34,8 +36,8 @@ const CLINICAL_TZ = "Europe/Paris"
 const DAY_MS = 24 * 3600_000
 const MIN_MS = 60_000
 /** Plage physiologique valide en mg/dL (= CGM_AGGREGATE_RANGE_GL × 100). */
-const VALID_MIN_MGDL = CGM_AGGREGATE_RANGE_GL.MIN * 100
-const VALID_MAX_MGDL = CGM_AGGREGATE_RANGE_GL.MAX * 100
+const VALID_MIN_MGDL = glToMgdl(CGM_AGGREGATE_RANGE_GL.MIN)
+const VALID_MAX_MGDL = glToMgdl(CGM_AGGREGATE_RANGE_GL.MAX)
 
 /** Moments affichés — source unique `@/lib/day-moments`. */
 export type MealMoment = DayMoment
@@ -232,12 +234,12 @@ async function loadContext(patientId: number, days: number, source: "cgm" | "bgm
   if (source === "bgm") {
     const rows = await prisma.glycemiaEntry.findMany({
       where: { patientId, date: { gte: fromDate, lte: toDate } },
-      select: { date: true, time: true, glycemiaGl: true, glycemiaMgdl: true },
+      // ADR #32 — unité canonique g/L (backfill S1 : `glycemia_gl` toujours peuplé).
+      select: { date: true, time: true, glycemiaGl: true },
     })
     readings = rows
       .map((r) => {
-        const gl = r.glycemiaGl !== null ? decimalToNumber(r.glycemiaGl) : null
-        const mgdl = gl !== null ? gl * 100 : r.glycemiaMgdl !== null ? decimalToNumber(r.glycemiaMgdl) : null
+        const mgdl = r.glycemiaGl !== null ? glToMgdl(decimalToNumber(r.glycemiaGl)) : null
         if (mgdl === null) return null
         // Relevé sans heure (`time` NULL) → aucune heure murale exploitable pour
         // l'appariement au repas → exclu (revue #617 B2 : sinon il retomberait à
@@ -261,10 +263,10 @@ async function loadContext(patientId: number, days: number, source: "cgm" | "bgm
       select: { valueGl: true, timestamp: true },
       orderBy: { timestamp: "asc" },
     })
-    readings = rows.map((r) => ({ t: r.timestamp.getTime(), mgdl: decimalToNumber(r.valueGl) * 100 }))
+    readings = rows.map((r) => ({ t: r.timestamp.getTime(), mgdl: glToMgdl(decimalToNumber(r.valueGl)) }))
   }
 
-  const targetHighMgdl = Math.round(thresholds.ok * 100)
+  const targetHighMgdl = Math.round(glToMgdl(thresholds.ok))
   return { meals, carbTimes, readings, bounds, targetHighMgdl, isPregnancy, days }
 }
 
