@@ -30,9 +30,14 @@ L'insulinothérapie intensive repose sur le calcul de trois composantes :
 - ISF = 0.30 g/L/U → 1 unité baisse glycémie de 0.30 g/L
 - Si glycémie = 1.8 g/L et cible = 1.2 g/L → Correction = (1.8 - 1.2) ÷ 0.30 = 2.0U
 
-**Unités de conversion** :
-- mg/dL × 0.0555 ≈ g/L
-- g/L × 18 ≈ mg/dL
+**Unités de conversion** (convention Diabeo — ADR #32, source de vérité
+`src/lib/glucose/units.ts`) :
+- **1 g/L = 100 mg/dL** (`g/L × 100 = mg/dL` ; `mg/dL ÷ 100 = g/L`) — **jamais ×18**
+- mmol/L (affichage SI uniquement) : `mmol/L = mg/dL ÷ 18,0182` (`mg/dL × 0,0555 ≈ mmol/L`)
+
+> ⚠️ Le facteur molaire ÷18,0182 relie **mg/dL ↔ mmol/L**, PAS g/L ↔ mg/dL. Toute
+> conversion glycémique dans le code transite par `glucose/units.ts`
+> (`glToMgdl`/`mgdlToGl`/`mgdlToMmoll`) — l'unité canonique de stockage/API est **g/L**.
 
 **Bornes cliniques** :
 ```typescript
@@ -590,30 +595,21 @@ const TIR_TARGETS = {
 
 ### Glycémie
 
+> ⚠️ **Source de vérité = `src/lib/glucose/units.ts`** (ADR #32). Le bloc ci-dessous
+> est pédagogique et suit la **convention Diabeo `1 g/L = 100 mg/dL`** — le facteur
+> molaire ÷18,0182 relie **mg/dL ↔ mmol/L**, jamais g/L ↔ mg/dL. Unité canonique de
+> stockage/API = **g/L** ; conversion à l'affichage selon `unitGlycemia` (3/4/5).
+
 ```typescript
-const UNITS = {
-  // Code → Définition (voir UnitDefinition table)
-  3: { unit: "g/L", factor: 1.0 },
-  4: { unit: "mg/dL", factor: 18.0 },    // mg/dL = g/L × 18
-  5: { unit: "mmol/L", factor: 5.55 },   // mmol/L = g/L × 5.55
-}
+// Codes UserUnitPreferences.unitGlycemia : 3=g/L, 4=mg/dL, 5=mmol/L
+// glucose/units.ts (extrait) :
+const MGDL_PER_GL = 100        // convention Diabeo (jamais ×18)
+const MGDL_PER_MMOLL = 18.0182 // facteur molaire, mg/dL ↔ mmol/L (affichage SI)
 
-// Conversion
-const toGl = (value: number, unit: "g/L" | "mg/dL" | "mmol/L"): number => {
-  switch (unit) {
-    case "g/L": return value
-    case "mg/dL": return value / 18
-    case "mmol/L": return value / 5.55
-  }
-}
-
-const fromGl = (value: number, unit: "g/L" | "mg/dL" | "mmol/L"): number => {
-  switch (unit) {
-    case "g/L": return value
-    case "mg/dL": return value * 18
-    case "mmol/L": return value * 5.55
-  }
-}
+const glToMgdl  = (gl: number) => gl * MGDL_PER_GL          // 1,20 g/L → 120 mg/dL
+const mgdlToGl  = (mgdl: number) => mgdl / MGDL_PER_GL      // 120 mg/dL → 1,20 g/L
+const mgdlToMmoll = (mgdl: number) => mgdl / MGDL_PER_MMOLL // 180 mg/dL → 9,99 mmol/L
+// g/L → mmol/L : glToMgdl(gl) / 18,0182  (≈ gl × 5,55)
 ```
 
 ### Autres unités

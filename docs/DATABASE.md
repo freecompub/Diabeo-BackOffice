@@ -457,7 +457,8 @@ Entrées capteur continu (CGM) — **Partitionnée par trimestre**.
 {
   id: BIGINT (PK)            // Composite PK : (id, timestamp)
   patientId: INT (FK)
-  valueGl: DECIMAL(6,4)      // g/L (ex: 1.2345) — CHECK >= 0.20 && <= 6.00
+  valueGl: DECIMAL(6,4)      // g/L (ex: 1.2345) — unité canonique (ADR #32)
+                             // CHECK 0.20 <= x <= 6.00 (migration versionnée 20260731100000)
   timestamp: TIMESTAMPTZ     // Avec timezone
   isManual: BOOLEAN          // FALSE = capteur automatique
   deviceId: STRING           // Appareil source
@@ -477,17 +478,29 @@ Entrées capteur continu (CGM) — **Partitionnée par trimestre**.
 
 ### GlycemiaEntry
 
-Mesures ponctuelles (glucomètre, capillaires).
+Mesures ponctuelles capillaires (BGM) + autres relevés (poids, HbA1c, tension…).
+La glycémie est une mesure **optionnelle** d'une entrée (une saisie peut ne porter
+que poids/HbA1c/tension).
 
 ```typescript
 {
+  id: INT (PK)
   patientId: INT (FK)
-  glucoseValue: FLOAT        // mg/dL
-  measurementType: STRING    // capillary, blood_test
-  timestamp: TIMESTAMPTZ
+  date: DATE                 // Jour de mesure
+  time: TIME                 // Heure murale locale (nullable)
+  isProfessional: BOOLEAN    // Saisi par un pro (vs patient)
+  glycemiaGl: DECIMAL(6,4)   // g/L — UNITÉ CANONIQUE (ADR #32), nullable
+                             // CHECK (glycemia_gl IS NULL OR 0.20 <= x <= 6.00)
+  weight, hba1c, ketones, bpSystolic, bpDiastolic, bolus, bolusCorr, basal, carb…
+  mealDescription: BYTES     // Chiffré AES-256-GCM (déchiffré à la lecture)
   createdAt: TIMESTAMPTZ
 }
 ```
+
+> **ADR #32** — la colonne `glycemiaMgdl` (double-stockage mg/dL) a été **supprimée**
+> (migration `20260801100000`). Unité canonique unique = **g/L** ; l'affichage
+> convertit selon `UserUnitPreferences.unitGlycemia` (3=g/L, 4=mg/dL, 5=mmol/L) via
+> `src/lib/glucose/units.ts`. Voir `docs/architecture/adr-normalisation-unites-glycemie.md`.
 
 ---
 
