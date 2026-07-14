@@ -6,14 +6,22 @@
 
 import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
+// Affichage par unité (ADR #32) : moyenne stockée en mg/dL, rendue selon la préférence.
+import {
+  type GlucoseUnitCode,
+  glucoseUnitLabel,
+  mgdlToDisplayValue,
+} from "@/lib/glucose/units"
 import type { ChartSummaryData } from "./types"
 
 interface ChartSummaryProps {
   data: ChartSummaryData
   className?: string
+  /** Unité d'affichage (`unitGlycemia` 3/4/5). Défaut mg/dL. `averageGlucose` reste en mg/dL. */
+  displayCode?: GlucoseUnitCode
 }
 
-export function ChartSummary({ data, className }: ChartSummaryProps) {
+export function ChartSummary({ data, className, displayCode = 4 }: ChartSummaryProps) {
   const t = useTranslations("chart")
 
   return (
@@ -29,9 +37,9 @@ export function ChartSummary({ data, className }: ChartSummaryProps) {
       </div>
       <div>
         <span className="font-medium text-gray-900">
-          {Math.round(data.averageGlucose)}
+          {mgdlToDisplayValue(data.averageGlucose, displayCode)}
         </span>{" "}
-        mg/dL {t("average")}
+        {glucoseUnitLabel(displayCode)} {t("average")}
       </div>
       {data.dosesCount > 0 && (
         <div>

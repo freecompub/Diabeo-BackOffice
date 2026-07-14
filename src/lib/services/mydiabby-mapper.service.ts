@@ -22,12 +22,13 @@ import type {
   MyDiabbyCgmLimits,
 } from "@/types/mydiabby"
 import type { Pathology, Sex, Language } from "@prisma/client"
+// Conversion d'unités : source de vérité unique = `@/lib/glucose/units` (ADR #32).
+import { glToMgdl as glToMgdlNumeric, MGDL_PER_GL } from "@/lib/glucose/units"
 
 // ── Clinical bounds for validation ─────────────────────────
 
 const GLUCOSE_MIN_MGDL = 20
 const GLUCOSE_MAX_MGDL = 600
-const GL_TO_MGDL = 100.0
 
 // ── User mapping ───────────────────────────────────────────
 
@@ -323,15 +324,17 @@ export function mapIsfSchedule(
     return {
       startHour: Math.floor(parseInt(s.start, 10) / 3_600_000),
       sensitivityFactorGl: factorGl,
-      sensitivityFactorMgdl: factorGl * GL_TO_MGDL,
+      sensitivityFactorMgdl: factorGl * MGDL_PER_GL,
     }
   })
 }
 
 // ── Helpers ────────────────────────────────────────────────
 
+// Variante « string » propre au mapper MyDiabby (les valeurs arrivent en chaînes).
+// L'arithmétique de conversion délègue au module unique `glucose/units`.
 function glToMgdl(glValue: string): number {
-  const result = parseFloat(glValue) * GL_TO_MGDL
+  const result = glToMgdlNumeric(parseFloat(glValue))
   return Number.isFinite(result) ? result : NaN
 }
 

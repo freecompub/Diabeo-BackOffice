@@ -2,6 +2,12 @@
 
 import { useTranslations } from "next-intl"
 import { GLYCEMIA_THRESHOLDS_MGDL as G } from "@/lib/glycemia-thresholds"
+// Affichage par unité (ADR #32) : données en mg/dL (repère clinique), rendu converti.
+import {
+  type GlucoseUnitCode,
+  glucoseUnitLabel,
+  mgdlToDisplayValue,
+} from "@/lib/glucose/units"
 
 /**
  * CGM Chart — US-803.
@@ -39,6 +45,11 @@ interface CgmChartProps {
   targetLow?: number
   targetHigh?: number
   height?: number
+  /**
+   * Unité d'affichage (`UserUnitPreferences.unitGlycemia` : 3=g/L, 4=mg/dL,
+   * 5=mmol/L). Défaut mg/dL. `data`/seuils restent en mg/dL ; seul le rendu convertit.
+   */
+  displayCode?: GlucoseUnitCode
 }
 
 export function CgmChart({
@@ -46,12 +57,20 @@ export function CgmChart({
   targetLow = G.TARGET_LOW,
   targetHigh = G.TARGET_HIGH,
   height = 320,
+  displayCode = 4,
 }: CgmChartProps) {
   const t = useTranslations("cgmChart")
+  const unitLabel = glucoseUnitLabel(displayCode)
+  const toDisplay = (mgdl: number) => mgdlToDisplayValue(mgdl, displayCode)
   return (
     <div
       role="img"
-      aria-label={t("figureAriaLabel", { count: data.length, low: targetLow, high: targetHigh })}
+      aria-label={t("figureAriaLabel", {
+        count: data.length,
+        low: toDisplay(targetLow),
+        high: toDisplay(targetHigh),
+        unit: unitLabel,
+      })}
     >
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -104,7 +123,9 @@ export function CgmChart({
             tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
             tickLine={false}
             axisLine={{ stroke: "var(--color-border)" }}
-            width={40}
+            // Domaine en mg/dL (position clinique) ; libellés dans l'unité préférée.
+            tickFormatter={(v: number) => String(toDisplay(v))}
+            width={displayCode === 4 ? 40 : 48}
             unit=""
           />
 
@@ -117,7 +138,7 @@ export function CgmChart({
                 <div className="rounded-lg border border-border bg-card px-3 py-2 shadow-md">
                   <p className="text-xs text-muted-foreground">{point.time}</p>
                   <p className="text-sm font-semibold" style={{ color }}>
-                    {t("tooltipValue", { value: point.glucose })}
+                    {t("tooltipValue", { value: toDisplay(point.glucose), unit: unitLabel })}
                   </p>
                 </div>
               )
@@ -139,15 +160,15 @@ export function CgmChart({
       <div className="mt-3 flex flex-wrap justify-center gap-4 text-xs text-muted-foreground">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-normal" />
-          {t("legendTarget", { low: targetLow, high: targetHigh })}
+          {t("legendTarget", { low: toDisplay(targetLow), high: toDisplay(targetHigh), unit: unitLabel })}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-high" />
-          {t("legendHigh", { high: targetHigh })}
+          {t("legendHigh", { high: toDisplay(targetHigh) })}
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-low" />
-          {t("legendLow", { low: targetLow })}
+          {t("legendLow", { low: toDisplay(targetLow) })}
         </span>
       </div>
 
@@ -156,7 +177,7 @@ export function CgmChart({
         <thead>
           <tr>
             <th scope="col">{t("colTime")}</th>
-            <th scope="col">{t("colGlucose")}</th>
+            <th scope="col">{t("colGlucose", { unit: unitLabel })}</th>
             <th scope="col">{t("colZone")}</th>
           </tr>
         </thead>
@@ -164,7 +185,7 @@ export function CgmChart({
           {data.filter((_, i) => i % 6 === 0).map((point) => (
             <tr key={point.time}>
               <td>{point.time}</td>
-              <td>{point.glucose}</td>
+              <td>{toDisplay(point.glucose)}</td>
               <td>{t(getZoneLabelKey(point.glucose, targetLow, targetHigh))}</td>
             </tr>
           ))}

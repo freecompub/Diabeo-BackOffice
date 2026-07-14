@@ -15,6 +15,7 @@ import {
   CartesianGrid, ResponsiveContainer, Tooltip,
 } from "recharts"
 import { tokens } from "@/design-system/tokens"
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
 
 /** Projection serveur d'une courbe de moment (déjà agrégée, buckets ≥ 3 relevés). */
 export interface MomentCurveView {
@@ -45,7 +46,12 @@ export interface MomentCurveView {
  */
 export function MealMomentCurve({ curve }: { curve: MomentCurveView }) {
   const t = useTranslations("patientDetail")
+  // Affichage par unité (ADR #32) : buckets/stats en mg/dL, rendu converti.
+  const glucoseUnit = useGlucoseUnit()
   const momentLabel = t(`meal_${curve.moment}`)
+  /** Convertit une moyenne mg/dL (ou null) → nombre d'affichage, « — » si absente. */
+  const toDisplay = (mgdl: number | null): number | string =>
+    mgdl != null ? glucoseUnit.value(mgdl) : "—"
   // Formatteur d'offset i18n (axe + tooltip) — plus de littéral « repas » en dur.
   const fmtOffset = (m: number) =>
     m === 0 ? t("mealOffsetMeal") : t("mealOffsetHours", { h: m / 60 })
@@ -76,14 +82,18 @@ export function MealMomentCurve({ curve }: { curve: MomentCurveView }) {
                   ticks={[-60, 0, 60, 120, 180]} tickFormatter={fmtOffset}
                   stroke={tokens.neutral[500]} tick={{ fontSize: 10 }}
                 />
-                <YAxis domain={[40, 300]} width={30} stroke={tokens.neutral[500]} tick={{ fontSize: 10 }} />
+                <YAxis
+                  domain={[40, 300]} width={glucoseUnit.code === 4 ? 30 : 40}
+                  tickFormatter={(v: number) => String(glucoseUnit.value(v))}
+                  stroke={tokens.neutral[500]} tick={{ fontSize: 10 }}
+                />
                 {/* Bande cible pathology-aware (bord haut = post-prandial patient). */}
                 <ReferenceArea y1={0} y2={curve.targetHighMgdl} fill={tokens.glycemia.normal} fillOpacity={0.08} ifOverflow="extendDomain" />
                 {/* Instant du repas. */}
                 <ReferenceLine x={0} stroke={tokens.brand.secondary[500]} strokeDasharray="4 2" />
                 <Line type="monotone" dataKey="avgMgdl" stroke={tokens.brand.primary[700]} strokeWidth={2} dot={false} connectNulls={false} />
                 <Tooltip
-                  formatter={(v) => [typeof v === "number" ? `${Math.round(v)} mg/dL` : "—", ""]}
+                  formatter={(v) => [typeof v === "number" ? glucoseUnit.format(v) : "—", ""]}
                   labelFormatter={(m) => fmtOffset(m as number)}
                   contentStyle={{ fontSize: 11 }}
                 />
@@ -103,7 +113,7 @@ export function MealMomentCurve({ curve }: { curve: MomentCurveView }) {
                 {curve.buckets.map((b) => (
                   <tr key={b.offsetMin}>
                     <th scope="row">{fmtOffset(b.offsetMin)}</th>
-                    <td>{b.avgMgdl} mg/dL</td>
+                    <td>{glucoseUnit.format(b.avgMgdl)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -112,9 +122,10 @@ export function MealMomentCurve({ curve }: { curve: MomentCurveView }) {
 
           <p className="mt-1 text-xs text-muted-foreground tabular-nums">
             {t("mealPrePostPeak", {
-              pre: curve.avgPreMgdl ?? "—",
-              post: curve.avgPostMgdl ?? "—",
-              peak: curve.avgPeakMgdl ?? "—",
+              pre: toDisplay(curve.avgPreMgdl),
+              post: toDisplay(curve.avgPostMgdl),
+              peak: toDisplay(curve.avgPeakMgdl),
+              unit: glucoseUnit.label,
             })}
           </p>
           {curve.highExcursion && (

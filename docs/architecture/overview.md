@@ -81,7 +81,7 @@ src/
 │   ├── statistics.ts # Fonctions pures (TIR, CV, AGP, GMI, hypo)
 │   ├── proposal-algorithm.ts # Algorithme ajustement ISF/ICR/basal
 │   ├── access-control.ts    # canAccessPatient, resolvePatientId
-│   ├── conversions.ts       # Conversion glucose g/L, mg/dL, mmol/L
+│   ├── glucose/units.ts     # Conversion glucose g/L↔mg/dL↔mmol/L (source unique, ADR #32)
 │   └── gdpr.ts              # Verification consentement RGPD
 ├── middleware.ts     # JWT verification globale (Edge Runtime)
 └── types/            # Types TypeScript

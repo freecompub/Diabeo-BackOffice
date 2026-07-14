@@ -35,6 +35,11 @@ import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
 import { Acronym } from "@/components/diabeo/Acronym"
 import type { GlucoseDataPoint } from "@/components/diabeo/charts/types"
+// Affichage par unité (ADR #32) : les points CGM restent en mg/dL (repère
+// clinique du TIR/calculs) — seule la couche présentation convertit selon la
+// préférence courante de l'utilisateur.
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
+import { glToMgdl } from "@/lib/glucose/units"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -179,8 +184,10 @@ function groupByDay(
     const key = toIsoDate(ts)
     if (map.has(key)) {
       const time = timeFmt.format(ts)
-      // valueGl en g/L → mg/dL : × 100 (jamais × 18, voir CLAUDE.md).
-      map.get(key)!.push({ time, timestamp: ts, glucose: Math.round(entry.valueGl * 100) })
+      // valueGl (g/L, unité canonique) → mg/dL via glToMgdl (jamais × 18, voir
+      // CLAUDE.md). Le point reste en mg/dL — seul le chart convertit pour le
+      // rendu via `displayCode` (ADR #32) ; le calcul TIR interne reste en mg/dL.
+      map.get(key)!.push({ time, timestamp: ts, glucose: Math.round(glToMgdl(entry.valueGl)) })
     }
   }
   return map
@@ -237,6 +244,9 @@ export default function WeeklyPage() {
   const t = useTranslations("weekly")
   const tCommon = useTranslations("common")
   const locale = useLocale()
+
+  // Préférence d'unité glycémie de l'utilisateur courant (ADR #32).
+  const glucoseUnit = useGlucoseUnit()
 
   const [activeTab, setActiveTab] = useState<WeeklyTab>("semainier")
   const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(new Date()))
@@ -484,7 +494,11 @@ export default function WeeklyPage() {
           >
             <WeekStatCard
               label={t("statAvgGlucose")}
-              value={weeklyStats.avgGlucose != null ? `${weeklyStats.avgGlucose} mg/dL` : "—"}
+              value={
+                weeklyStats.avgGlucose != null
+                  ? glucoseUnit.format(weeklyStats.avgGlucose)
+                  : "—"
+              }
             />
             <WeekStatCard
               label={t("statTir")}
@@ -560,7 +574,7 @@ export default function WeeklyPage() {
                   </span>
                   <div className="flex items-center gap-2 text-[11px] text-gray-400">
                     {day.avgGlucose != null && (
-                      <span>{t("dayAvgGlucose", { value: day.avgGlucose })}</span>
+                      <span>{glucoseUnit.format(day.avgGlucose)}</span>
                     )}
                     {day.tirPercent != null && (
                       <span
@@ -588,6 +602,7 @@ export default function WeeklyPage() {
                     glucoseData={day.glucoseData}
                     height={180}
                     className="h-full"
+                    displayCode={glucoseUnit.code}
                   />
                 </div>
               </DiabeoCard>

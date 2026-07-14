@@ -21,6 +21,7 @@ import type { AdjustableParameter, ProposalSource } from "@prisma/client"
 import { DashboardHeader } from "@/components/diabeo/DashboardHeader"
 import { PatientContextBar, type ContextFlags } from "@/components/diabeo/patient/PatientContextBar"
 import { GlycemiaValue, TirDonut, ClinicalBadge, StatCard } from "@/components/diabeo"
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
 import type { TirData } from "@/components/diabeo/TirDonut"
 import { Acronym } from "@/components/diabeo/Acronym"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
@@ -228,6 +229,7 @@ export function ReviewClient({
 /* ── Étape 1 — Résumé ─────────────────────────────────────────────── */
 function SummaryStep({ data }: { data: ReviewData }) {
   const t = useTranslations("review")
+  const glucoseUnit = useGlucoseUnit()
   const { stats, objectives, patient } = data
   return (
     <>
@@ -255,7 +257,7 @@ function SummaryStep({ data }: { data: ReviewData }) {
       {stats ? (
         <>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label={t("avgGlucose")} value={String(stats.avgGlucoseMgdl)} unit="mg/dL" icon={<Activity className="h-5 w-5" />} />
+            <StatCard label={t("avgGlucose")} value={String(glucoseUnit.value(stats.avgGlucoseMgdl))} unit={glucoseUnit.label} icon={<Activity className="h-5 w-5" />} />
             <StatCard label={t("kpiTir")} value={`${Math.round(stats.tir.inRange)}%`} variant={stats.tir.inRange >= objectives.tirTargetPct ? "success" : "warning"} />
             <StatCard label={t("kpiGmi")} value={`${stats.gmi}%`} />
             <StatCard label={t("kpiCv")} value={`${stats.cv}%`} variant={stats.cv <= objectives.cvMaxPct ? "success" : "warning"} />
@@ -291,6 +293,7 @@ function SummaryStep({ data }: { data: ReviewData }) {
 /* ── Étape 2 — Glycémie ───────────────────────────────────────────── */
 function GlycemiaStep({ data }: { data: ReviewData }) {
   const t = useTranslations("review")
+  const glucoseUnit = useGlucoseUnit()
   const { glycemia, objectives } = data
   return (
     <>
@@ -314,7 +317,7 @@ function GlycemiaStep({ data }: { data: ReviewData }) {
             {glycemia.lastReadingMgdl !== null && (
               <GlycemiaValue
                 value={glycemia.lastReadingMgdl}
-                unit="mg/dL"
+                unit={glucoseUnit.label}
                 thresholds={{ low: objectives.targetLowMgdl, high: objectives.targetHighMgdl }}
               />
             )}

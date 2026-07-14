@@ -20,15 +20,16 @@ const listQuerySchema = z.object({
 }).refine((d) => d.from < d.to, { message: "from must be before to" })
 
 const measurementFields = [
-  "glycemiaGl", "glycemiaMgdl", "weight", "hba1c", "ketones",
+  "glycemiaGl", "weight", "hba1c", "ketones",
   "bpSystolic", "bpDiastolic", "bolus", "basal", "carb",
 ] as const
 
+// ADR #32 — unité canonique g/L : la glycémie capillaire n'est saisie qu'en g/L
+// (0,20–6,00). Le champ `glycemiaMgdl` (double-stockage) est retiré du contrat.
 const glycemiaSchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional(),
   glycemiaGl: z.number().min(0.20).max(6.00).optional(),
-  glycemiaMgdl: z.number().min(20).max(600).optional(),
   weight: z.number().min(20).max(300).optional(),
   hba1c: z.number().min(4.0).max(14.0).optional(),
   ketones: z.number().min(0).max(20).optional(),
@@ -45,10 +46,9 @@ const glycemiaSchema = z.object({
 
 type SerializedGlycemiaEntry = Omit<
   GlycemiaEntry,
-  "glycemiaGl" | "glycemiaMgdl" | "weight" | "hba1c" | "ketones" | "bolus" | "bolusCorr" | "basal"
+  "glycemiaGl" | "weight" | "hba1c" | "ketones" | "bolus" | "bolusCorr" | "basal"
 > & {
   glycemiaGl: number | null
-  glycemiaMgdl: number | null
   weight: number | null
   hba1c: number | null
   ketones: number | null
@@ -65,10 +65,10 @@ type SerializedGlycemiaEntry = Omit<
  *  - `mealDescription` ciphertext is decrypted (never leak base64).
  */
 function serializeEntry(entry: GlycemiaEntry): SerializedGlycemiaEntry {
+  // ADR #32 — unité canonique g/L ; la colonne `glycemiaMgdl` a été supprimée (S4).
   return {
     ...entry,
     glycemiaGl: entry.glycemiaGl === null ? null : decimalToNumber(entry.glycemiaGl),
-    glycemiaMgdl: entry.glycemiaMgdl === null ? null : decimalToNumber(entry.glycemiaMgdl),
     weight: entry.weight === null ? null : decimalToNumber(entry.weight),
     hba1c: entry.hba1c === null ? null : decimalToNumber(entry.hba1c),
     ketones: entry.ketones === null ? null : decimalToNumber(entry.ketones),
@@ -204,7 +204,6 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
           date: new Date(parsed.data.date),
           time: parsed.data.time ? new Date(`1970-01-01T${parsed.data.time}:00Z`) : null,
           glycemiaGl: parsed.data.glycemiaGl,
-          glycemiaMgdl: parsed.data.glycemiaMgdl,
           weight: parsed.data.weight,
           hba1c: parsed.data.hba1c,
           ketones: parsed.data.ketones,

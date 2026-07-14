@@ -213,9 +213,34 @@ DB : cgm_entries.value_gl (g/L)  |  glycemia_entries.glycemia_gl (g/L) + glycemi
 
 ---
 
-## 5. État de l'epic « standardisation mg/dL »
+## 5. État de l'epic — normalisation **g/L canonique** (ADR #32, IMPLÉMENTÉE)
 
-Une décision d'epic (« stocker CGM/BGM + API en mg/dL uniquement, logique clinique en g/L via conversion à la lecture ») a été évoquée. **Le code actuel ne l'implémente pas** : le CGM est stocké en g/L seul, le BGM en double colonne avec g/L prioritaire, et l'algorithme + le stockage de référence sont en g/L. Aucune trace d'implémentation d'un basculement mg/dL‑only dans le schéma ou les services audités. **La source de vérité reste le code inventorié ci‑dessus.**
+> ⚠️ **Cet inventaire décrit l'état AVANT normalisation.** La cible initiale (« mg/dL
+> canonique ») a été **inversée** puis **implémentée en g/L canonique** (voir
+> [`docs/architecture/adr-normalisation-unites-glycemie.md`](../architecture/adr-normalisation-unites-glycemie.md)).
+> Deux faits ont motivé le choix g/L : l'app iOS n'existe pas encore (le coût mg/dL
+> tombe) et le cœur du code était déjà en g/L. Le vrai défaut corrigé n'était pas
+> l'unité mais le **double-stockage BGM**.
+
+**Changements livrés (slices S0→S4) :**
+
+- **S0** — module de conversion **unique** `src/lib/glucose/units.ts` (les conversions
+  dispersées relevées aux §1/§4.3 y sont centralisées ; `statistics.ts`/`mydiabby-mapper`/
+  `AgpPercentileChart`/`glycemia-view` délèguent).
+- **S1** — `CHECK value_gl BETWEEN 0.20 AND 6.00` posé en **migration versionnée** (résout le
+  drift §2/§4.1) ; backfill `glycemia_gl = COALESCE(glycemia_gl, glycemia_mgdl/100)`.
+- **S2** — API + services BGM **g/L-only** : `POST /glycemia` n'accepte plus que `glycemiaGl`,
+  lectures (`meal-trends`/`analytics`/`glycemia.service`) sur `glycemia_gl` seul, sync n'écrit
+  plus mg/dL (résout le double-input incohérent §4.2).
+- **S3** — affichage **par préférence** (`unitGlycemia` 3/4/5) via `useGlucoseUnit` + charts
+  `displayCode` (résout la conversion dupliquée §4.3 et le « contrat g/L, UI mg/dL » §4.4).
+- **S4** — `DROP COLUMN glycemia_mgdl` + `CHECK (glycemia_gl IS NULL OR 0.20–6.00)` (fin du
+  double-stockage §4.2) ; export RGPD **labellisé g/L** (résout §4.7).
+
+**Restent en mg/dL (îlots assumés)** : `GlucoseTarget.targetGlucose`, `DiabetesEvent`,
+`EmergencyAlert`, et la décision `emergency.service` (§3.6, converti à la frontière) — hors
+flux de mesure. **Hors périmètre** : formulaires de SAISIE (mg/dL fixe), textes de référence
+ADA génériques. **La source de vérité reste le code** ; ce §5 pointe l'état cible atteint.
 
 ---
 

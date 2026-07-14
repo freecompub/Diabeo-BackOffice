@@ -8,16 +8,10 @@
  * @see https://diabetes.org/about-us/statistics/statistics-about-diabetes — ADA metrics
  */
 
-/**
- * Convert glucose from g/L to mg/dL.
- * @param {number} gl - Glucose in g/L
- * @returns {number} Glucose in mg/dL
- * @example
- * glToMgdl(1.50) // Returns 150
- */
-export function glToMgdl(gl: number): number {
-  return gl * 100
-}
+// Conversion d'unités : source de vérité unique = `@/lib/glucose/units` (ADR #32).
+// Ré-exporté ici pour les nombreux consommateurs d'analytics qui l'importent
+// historiquement depuis `@/lib/statistics`.
+export { glToMgdl } from "@/lib/glucose/units"
 
 /**
  * Glucose Management Indicator (GMI) — ADA/EASD preferred metric over eA1c.

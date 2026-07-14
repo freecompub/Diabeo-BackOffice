@@ -44,6 +44,7 @@ import { TimeInRangeChart } from "@/components/diabeo/charts/TimeInRangeChart"
 import { HypoglycemiaCounter } from "@/components/diabeo/charts/HypoglycemiaCounter"
 import { DiabeoEmptyState } from "@/components/diabeo/DiabeoEmptyState"
 import { DiabeoCard } from "@/components/diabeo/DiabeoCard"
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
 import type { WidgetData } from "@/components/diabeo/widgets/types"
 import type { TimeInRangeData, HypoglycemiaData } from "@/components/diabeo/charts/types"
 
@@ -143,6 +144,8 @@ export default function AnalyticsPage() {
   const t = useTranslations("analytics")
   const tCommon = useTranslations("common")
   const locale = useLocale()
+  // Unité d'affichage de l'utilisateur courant (ADR #32) — KPI moyenne/écart-type.
+  const glucoseUnit = useGlucoseUnit()
 
   const [period, setPeriod] = useState<TimePeriod>(TimePeriod.TwoWeeks)
   const [pageState, setPageState] = useState<PageState>("idle")
@@ -213,7 +216,7 @@ export default function AnalyticsPage() {
 
   const widgetData: WidgetData = profileData
     ? {
-        averageGlucose: { value: Math.round(profileData.avg), unit: "mg/dL" },
+        averageGlucose: { value: glucoseUnit.value(profileData.avg), unit: glucoseUnit.label },
         hba1c: { value: Number(profileData.hba1c.toFixed(1)) },
         hypoglycemia: {
           count: hypoData?.totalCount ?? 0,
@@ -227,7 +230,7 @@ export default function AnalyticsPage() {
           veryHigh: tirData?.veryHigh ?? profileData.tir.veryHigh,
         },
         cv: { value: Number(profileData.cv.toFixed(1)) },
-        standardDeviation: { value: Math.round(profileData.sd), unit: "mg/dL" },
+        standardDeviation: { value: glucoseUnit.value(profileData.sd), unit: glucoseUnit.label },
       }
     : {}
 

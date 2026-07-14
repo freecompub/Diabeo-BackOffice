@@ -1385,8 +1385,7 @@ Mesures ponctuelles (glycémie capillaire, poids, tension, HbA1c).
 | date | Date | N | — | Date mesure (ex: 2026-04-01) |
 | time | Time | Y | — | Heure mesure (ex: 10:30:00) |
 | isProfessional | Boolean | N | false | Flag: Saisi par pro (vs patient) |
-| glycemiaGl | Decimal(6,4) | Y | — | Glycémie (g/L, ex: 1.30) |
-| glycemiaMgdl | Decimal(6,2) | Y | — | Glycémie (mg/dL, ex: 130.0) |
+| glycemiaGl | Decimal(6,4) | Y | — | Glycémie (g/L — unité canonique, ADR #32 ; ex: 1.30). `CHECK (NULL OR 0.20–6.00)` |
 | weight | Decimal(5,2) | Y | — | Poids (kg, ex: 75.50) |
 | hba1c | Decimal(5,2) | Y | — | HbA1c (%, ex: 6.50) |
 | ketones | Decimal(5,2) | Y | — | Cétones (mmol/L, ex: 0.30) |

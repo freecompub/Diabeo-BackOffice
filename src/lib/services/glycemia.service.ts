@@ -231,8 +231,8 @@ export const glycemiaService = {
       date: e.date.toISOString(),
       time: iso(e.time),
       isProfessional: e.isProfessional,
+      // ADR #32 — unité canonique g/L. `glycemiaMgdl` retiré du contrat.
       glycemiaGl: dec(e.glycemiaGl),
-      glycemiaMgdl: dec(e.glycemiaMgdl),
       weight: dec(e.weight),
       hba1c: dec(e.hba1c),
       ketones: dec(e.ketones),

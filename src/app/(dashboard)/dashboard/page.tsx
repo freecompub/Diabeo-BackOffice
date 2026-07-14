@@ -42,6 +42,10 @@ import { DiabeoFAB } from "@/components/diabeo/DiabeoFAB"
 import { PeriodSelector, TimePeriod } from "@/components/diabeo/PeriodSelector"
 import type { WidgetData } from "@/components/diabeo/widgets/types"
 import type { GlucoseDataPoint } from "@/components/diabeo/charts/types"
+// Affichage par unité (ADR #32) : données CGM/KPI stockées/transportées en
+// mg/dL — seule la couche présentation convertit selon la préférence courante.
+import { useGlucoseUnit, type UseGlucoseUnit } from "@/hooks/useGlucoseUnit"
+import { glToMgdl } from "@/lib/glucose/units"
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -63,12 +67,18 @@ const PERIOD_TO_API: Record<TimePeriod, string> = {
 // ---------------------------------------------------------------------------
 
 interface GlycemicProfileApiResponse {
-  averageGlucose?: number
-  averageGlucoseUnit?: string
   hba1c?: number
   cv?: number
-  standardDeviation?: number
-  standardDeviationUnit?: string
+  /**
+   * Champs réellement renvoyés par `analyticsService.glycemicProfile`
+   * (`GET /api/analytics/glycemic-profile`) — toujours en **mg/dL** (unité
+   * clinique interne). Source de vérité pour la conversion d'affichage KPI
+   * selon la préférence utilisateur courante (ADR #32, `useGlucoseUnit`).
+   */
+  metrics?: {
+    averageGlucoseMgdl?: number
+    stdDevMgdl?: number
+  }
 }
 
 interface TimeInRangeApiResponse {
@@ -127,15 +137,30 @@ async function apiFetch<T>(url: string, signal?: AbortSignal): Promise<ApiResult
 // Helper: map API responses → WidgetData
 // ---------------------------------------------------------------------------
 
+/**
+ * Construit le `WidgetData` consommé par `<DataSummaryGrid>` à partir des
+ * réponses API brutes.
+ *
+ * ADR #32 — `averageGlucose`/`standardDeviation` sont des glycémies dont la
+ * source (`profile.metrics.averageGlucoseMgdl`/`stdDevMgdl`) est **toujours**
+ * en mg/dL : ce helper convertit vers l'unité d'affichage préférée de
+ * l'utilisateur courant (`glucoseUnit.value`) et porte le libellé associé
+ * (`glucoseUnit.label`) — jamais de "mg/dL" en dur. `hba1c`/`cv` sont des
+ * grandeurs sans unité glycémique (indice/%) : non concernées par ADR #32.
+ */
 function buildWidgetData(
   profile: GlycemicProfileApiResponse | null,
   tir: TimeInRangeApiResponse | null,
-  hypo: HypoglycemiaApiResponse | null
+  hypo: HypoglycemiaApiResponse | null,
+  glucoseUnit: Pick<UseGlucoseUnit, "value" | "label">,
 ): WidgetData {
+  const avgGlucoseMgdl = profile?.metrics?.averageGlucoseMgdl
+  const stdDevMgdl = profile?.metrics?.stdDevMgdl
+
   return {
     averageGlucose:
-      profile?.averageGlucose != null
-        ? { value: profile.averageGlucose, unit: profile.averageGlucoseUnit ?? "mg/dL" }
+      avgGlucoseMgdl != null
+        ? { value: glucoseUnit.value(avgGlucoseMgdl), unit: glucoseUnit.label }
         : undefined,
     hba1c:
       profile?.hba1c != null ? { value: profile.hba1c } : undefined,
@@ -160,11 +185,8 @@ function buildWidgetData(
     cv:
       profile?.cv != null ? { value: profile.cv } : undefined,
     standardDeviation:
-      profile?.standardDeviation != null
-        ? {
-            value: profile.standardDeviation,
-            unit: profile.standardDeviationUnit ?? "mg/dL",
-          }
+      stdDevMgdl != null
+        ? { value: glucoseUnit.value(stdDevMgdl), unit: glucoseUnit.label }
         : undefined,
   }
 }
@@ -207,6 +229,9 @@ export default function GlycemiaDashboardPage() {
   const tCommon = useTranslations("common")
   const locale = useLocale()
   const router = useRouter()
+
+  // Préférence d'unité glycémie de l'utilisateur courant (ADR #32).
+  const glucoseUnit = useGlucoseUnit()
 
   // Period state — default 14 days
   const [period, setPeriod] = useState<TimePeriod>(TimePeriod.TwoWeeks)
@@ -293,12 +318,15 @@ export default function GlycemiaDashboardPage() {
             profile.ok ? profile.data : null,
             tir.ok ? tir.data : null,
             hypo.ok ? hypo.data : null,
+            glucoseUnit,
           ),
         )
 
         // Map CGM entries to chart data points.
         // L'API retourne un tableau plat (pas d'enveloppe `{ data }`).
-        // valueGl en g/L → mg/dL : × 100 (jamais × 18, voir CLAUDE.md).
+        // valueGl (g/L, unité canonique) → mg/dL via glToMgdl (jamais × 18,
+        // voir CLAUDE.md). Les points RESTENT en mg/dL — seul le chart
+        // convertit pour le rendu via `displayCode` (ADR #32).
         const cgmEntries: CgmEntry[] = cgm.ok && Array.isArray(cgm.data) ? cgm.data : []
         const points: GlucoseDataPoint[] = cgmEntries
           .map((entry) => {
@@ -307,7 +335,7 @@ export default function GlycemiaDashboardPage() {
             return {
               time: ts.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" }),
               timestamp: ts,
-              glucose: Math.round(entry.valueGl * 100),
+              glucose: Math.round(glToMgdl(entry.valueGl)),
             }
           })
           .filter((p): p is GlucoseDataPoint => p !== null)
@@ -324,7 +352,7 @@ export default function GlycemiaDashboardPage() {
         }
       }
     },
-    [period, locale, router],
+    [period, locale, router, glucoseUnit],
   )
 
   // ---------------------------------------------------------------------------
@@ -472,7 +500,7 @@ export default function GlycemiaDashboardPage() {
           ) : glucoseData.length === 0 ? (
             <DiabeoEmptyState variant="noData" />
           ) : (
-            <GlycemiaEvolutionChart glucoseData={glucoseData} />
+            <GlycemiaEvolutionChart glucoseData={glucoseData} displayCode={glucoseUnit.code} />
           )}
         </section>
       </div>

@@ -24,6 +24,8 @@
  */
 
 import type { Locale } from "@/i18n/config"
+// Conversion d'unités glycémie : source de vérité unique = `@/lib/glucose/units` (ADR #32).
+import { mgdlToGl, mgdlToMmoll } from "@/lib/glucose/units"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Locale → BCP 47 mapping
@@ -242,17 +244,19 @@ export function formatGlucose(
 ): string {
   if (!Number.isFinite(valueMgdl)) return ""
 
+  // Conversions déléguées au module unique `@/lib/glucose/units` (ADR #32) —
+  // pas de `/100` ni `/18.0182` ré-implémentés ici.
   let value: number
   let unitLabel: string
   let decimals: number
   switch (targetUnit) {
     case "gl":
-      value = valueMgdl / 100
+      value = mgdlToGl(valueMgdl)
       unitLabel = "g/L"
       decimals = options.decimals ?? 2
       break
     case "mmoll":
-      value = valueMgdl / 18.0182
+      value = mgdlToMmoll(valueMgdl)
       unitLabel = "mmol/L"
       decimals = options.decimals ?? 1
       break

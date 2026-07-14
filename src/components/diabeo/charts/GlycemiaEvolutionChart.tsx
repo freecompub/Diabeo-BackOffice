@@ -33,6 +33,13 @@ import {
   Scatter,
 } from "recharts"
 import { cn } from "@/lib/utils"
+// Affichage par unité (ADR #32) : les données restent en mg/dL (repère clinique
+// des zones), seuls les NOMBRES rendus sont convertis selon la préférence.
+import {
+  type GlucoseUnitCode,
+  glucoseUnitLabel,
+  mgdlToDisplayValue,
+} from "@/lib/glucose/units"
 import { ChartDisplayOptionsMenu } from "./ChartDisplayOptionsMenu"
 import { ChartSummary } from "./ChartSummary"
 import type {
@@ -52,6 +59,12 @@ interface GlycemiaEvolutionChartProps {
   thresholds?: GlycemiaThresholds
   height?: number
   className?: string
+  /**
+   * Unité d'affichage (`UserUnitPreferences.unitGlycemia` : 3=g/L, 4=mg/dL,
+   * 5=mmol/L). Défaut mg/dL. Les valeurs internes (`glucoseData`, `thresholds`)
+   * restent en mg/dL ; seul le RENDU (axe, tooltip, légende, table) est converti.
+   */
+  displayCode?: GlucoseUnitCode
 }
 
 interface MergedDataPoint {
@@ -69,10 +82,15 @@ export function GlycemiaEvolutionChart({
   thresholds = DEFAULT_THRESHOLDS,
   height: _height = 360,
   className,
+  displayCode = 4,
 }: GlycemiaEvolutionChartProps) {
   const t = useTranslations("chart")
   const tGlycemia = useTranslations("glycemia")
   const tInsulin = useTranslations("insulin")
+
+  // Conversion d'affichage : mg/dL (interne) → unité préférée (nombre seul).
+  const unitLabel = glucoseUnitLabel(displayCode)
+  const toDisplay = (mgdl: number) => mgdlToDisplayValue(mgdl, displayCode)
 
   const [displayOptions, setDisplayOptions] = useState<ChartDisplayOptions>({
     showInsulin: true,
@@ -156,12 +174,12 @@ export function GlycemiaEvolutionChart({
       </div>
 
       {/* Summary */}
-      <ChartSummary data={summary} />
+      <ChartSummary data={summary} displayCode={displayCode} />
 
       {/* Chart */}
       <div
         role="img"
-        aria-label={`${t("glucoseEvolution")} — ${glucoseData.length} ${t("readings")}`}
+        aria-label={`${t("glucoseEvolution")} — ${glucoseData.length} ${t("readings")} (${unitLabel})`}
         className="h-[240px] sm:h-[300px] md:h-[360px]"
       >
         <ResponsiveContainer width="100%" height="100%">
@@ -225,7 +243,9 @@ export function GlycemiaEvolutionChart({
               tick={{ fontSize: 11, fill: "var(--diabeo-neutral-400)" }}
               tickLine={false}
               axisLine={{ stroke: "var(--color-border)" }}
-              width={40}
+              // Domaine en mg/dL (position clinique) ; libellés dans l'unité préférée.
+              tickFormatter={(v: number) => String(toDisplay(v))}
+              width={displayCode === 4 ? 40 : 48}
             />
 
             {/* Insulin Y axis (right) */}
@@ -264,7 +284,7 @@ export function GlycemiaEvolutionChart({
                             ],
                         }}
                       >
-                        {t("tooltipGlucoseValue", { value: point.glucose })} — {getZoneLabel(point.glucose)}
+                        {t("tooltipGlucoseValue", { value: toDisplay(point.glucose), unit: unitLabel })} — {getZoneLabel(point.glucose)}
                       </p>
                     )}
                     {point.bolusAmount != null && (
@@ -343,15 +363,15 @@ export function GlycemiaEvolutionChart({
       <div className="flex flex-wrap justify-center gap-4 text-xs text-gray-500">
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-normal" />
-          {tGlycemia("inRange")} ({thresholds.targetMin}–{thresholds.targetMax})
+          {tGlycemia("inRange")} ({toDisplay(thresholds.targetMin)}–{toDisplay(thresholds.targetMax)} {unitLabel})
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-high" />
-          {tGlycemia("high")} (&gt;{thresholds.targetMax})
+          {tGlycemia("high")} (&gt;{toDisplay(thresholds.targetMax)} {unitLabel})
         </span>
         <span className="flex items-center gap-1.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-glycemia-low" />
-          {tGlycemia("low")} (&lt;{thresholds.low})
+          {tGlycemia("low")} (&lt;{toDisplay(thresholds.low)} {unitLabel})
         </span>
         {displayOptions.showInsulin && insulinDoses.length > 0 && (
           <span className="flex items-center gap-1.5">
@@ -366,7 +386,7 @@ export function GlycemiaEvolutionChart({
         <thead>
           <tr>
             <th scope="col">{t("hour")}</th>
-            <th scope="col">{t("glucoseMgdl")}</th>
+            <th scope="col">{t("glucoseWithUnit", { unit: unitLabel })}</th>
             <th scope="col">{t("zoneLabel")}</th>
           </tr>
         </thead>
@@ -376,7 +396,7 @@ export function GlycemiaEvolutionChart({
             .map((point) => (
               <tr key={point.time}>
                 <td>{point.time}</td>
-                <td>{point.glucose}</td>
+                <td>{toDisplay(point.glucose)}</td>
                 <td>{getZoneLabel(point.glucose)}</td>
               </tr>
             ))}
