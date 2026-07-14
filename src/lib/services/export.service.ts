@@ -243,6 +243,10 @@ export async function generateUserExport(userId: number) {
       pathology: patient.pathology,
       medicalData: decryptMedicalData(medicalData as unknown as Record<string, unknown>),
       objectives: { glycemia: glycemiaObjectives, cgm: cgmObjective, annex: annexObjective },
+      // RGPD Art. 20 — libellé d'unité explicite des mesures glycémiques (ADR #32) :
+      // le data subject reçoit `valueGl`/`glycemiaGl` bruts, cette annotation lève
+      // toute ambiguïté (unité canonique g/L, jamais mg/dL).
+      measurementUnits: { glucose: "g/L", note: "cgmEntries.valueGl et glycemiaEntries.glycemiaGl sont en g/L (1 g/L = 100 mg/dL)" },
       treatments,
       insulinTherapy: insulinTherapySettings,
       cgmEntries,

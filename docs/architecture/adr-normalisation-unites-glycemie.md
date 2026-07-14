@@ -56,7 +56,7 @@ molaire ÷18,0182 n'apparaît **que** pour l'affichage mmol/L).
 | Couche | Décision |
 |---|---|
 | **Stockage CGM** | `CgmEntry.value_gl` `Decimal(6,4)` **inchangé** + `CHECK value_gl BETWEEN 0.20 AND 6.00` posé en **migration versionnée**. |
-| **Stockage BGM** | **une seule colonne** `glycemia_gl` `Decimal(6,4)` `NOT NULL` + `CHECK BETWEEN 0.20 AND 6.00`. Colonne `glycemia_mgdl` **supprimée** (backfill `glycemia_gl = COALESCE(glycemia_gl, glycemia_mgdl/100)` avant `DROP`). |
+| **Stockage BGM** | **une seule colonne** `glycemia_gl` `Decimal(6,4)`, **nullable** (la glycémie est une mesure *optionnelle* d'une entrée BGM — poids / HbA1c / tension seuls possibles) + `CHECK (glycemia_gl IS NULL OR glycemia_gl BETWEEN 0.20 AND 6.00)`. Colonne `glycemia_mgdl` **supprimée** (backfill `glycemia_gl = COALESCE(glycemia_gl, glycemia_mgdl/100)` avant `DROP`). |
 | **Conversion** | **module unique** `src/lib/glucose/units.ts` (pur, sans dépendance Prisma/Redis → importable client + serveur). Toute conversion `g/L↔mg/dL↔mmol/L` y transite. |
 | **Logique clinique** | **inchangée** (déjà g/L). Aucun seuil clinique touché. |
 | **Emergency** | conserve sa décision en mg/dL (seul décideur mg/dL) via le module de conversion — inchangé fonctionnellement. |
@@ -97,7 +97,7 @@ mesure) — îlots assumés, convertis à la frontière via le module.
 | **S1** | Migration : `CHECK` CGM (versionné) + backfill `glycemia_gl`. Réconcilie le drift `cgm_partitioning.sql`. | non |
 | **S2** | `POST /glycemia` g/L-only + lecture BGM g/L-only (route, `meal-trends`, `analytics`, `glycemia.service`, `mydiabby-sync`). | non |
 | **S3** | Affichage : `formatGlucose(gl, unitGlycemia)` sur la préférence patient ; suppression des `round(valueGl*100)`. | non |
-| **S4** | Migration destructive : `NOT NULL` + `CHECK` `glycemia_gl`, `DROP glycemia_mgdl` ; export g/L labellisé. | **oui (destructif)** |
+| **S4** | Migration destructive : `CHECK` (NULL-toléré) sur `glycemia_gl`, `DROP glycemia_mgdl` ; export g/L labellisé. | **oui (destructif)** |
 
 ---
 

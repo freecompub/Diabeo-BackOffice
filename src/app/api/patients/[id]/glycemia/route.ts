@@ -46,7 +46,7 @@ const glycemiaSchema = z.object({
 
 type SerializedGlycemiaEntry = Omit<
   GlycemiaEntry,
-  "glycemiaGl" | "glycemiaMgdl" | "weight" | "hba1c" | "ketones" | "bolus" | "bolusCorr" | "basal"
+  "glycemiaGl" | "weight" | "hba1c" | "ketones" | "bolus" | "bolusCorr" | "basal"
 > & {
   glycemiaGl: number | null
   weight: number | null
@@ -65,11 +65,9 @@ type SerializedGlycemiaEntry = Omit<
  *  - `mealDescription` ciphertext is decrypted (never leak base64).
  */
 function serializeEntry(entry: GlycemiaEntry): SerializedGlycemiaEntry {
-  // ADR #32 — `glycemiaMgdl` retiré du contrat : on ne le sérialise plus et on
-  // l'exclut du spread pour ne jamais fuiter un Decimal brut dans la réponse.
-  const { glycemiaMgdl: _dropped, ...rest } = entry
+  // ADR #32 — unité canonique g/L ; la colonne `glycemiaMgdl` a été supprimée (S4).
   return {
-    ...rest,
+    ...entry,
     glycemiaGl: entry.glycemiaGl === null ? null : decimalToNumber(entry.glycemiaGl),
     weight: entry.weight === null ? null : decimalToNumber(entry.weight),
     hba1c: entry.hba1c === null ? null : decimalToNumber(entry.hba1c),

@@ -1561,8 +1561,7 @@ model GlycemiaEntry {
   date            DateTime  @db.Date
   time            DateTime? @db.Time()
   isProfessional  Boolean   @default(false) @map("is_professional")
-  glycemiaGl      Decimal?  @map("glycemia_gl") @db.Decimal(6, 4) // g/L
-  glycemiaMgdl    Decimal?  @map("glycemia_mgdl") @db.Decimal(6, 2) // mg/dL
+  glycemiaGl      Decimal?  @map("glycemia_gl") @db.Decimal(6, 4) // g/L (unité canonique, ADR #32) — nullable : la glycémie est une mesure optionnelle d'une entrée (poids/HbA1c/tension seuls possibles)
   weight          Decimal?  @db.Decimal(5, 2)
   hba1c           Decimal?  @db.Decimal(5, 2)
   ketones         Decimal?  @db.Decimal(5, 2)
