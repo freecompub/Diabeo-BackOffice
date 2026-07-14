@@ -58,10 +58,11 @@ const fmtRanges = (ranges: HourRange[]) => ranges.map((r) => `${fmtHour(r.startH
  *   d'ensemble pour revue médecin (NURSE / patient).
  * @param audience `"pro"` (soignant, route `POST /api/slot-set-proposals`) vs `"patient"` (own-id, route
  *   `PUT /api/patient/insulin-slot-set`). Ignoré en mode `direct`.
- * @param structural `true` (défaut) autorise la RESTRUCTURATION (changer les heures, ajouter/supprimer un
- *   créneau) ; `false` = **valeurs seules** (heures en lecture, pas d'ajout/suppression). Le patient est en
- *   valeurs seules : le serveur refuse toute restructuration côté patient (`structuralChangeNotAllowed`) —
- *   un patient édite des doses, il ne re-partitionne pas ses créneaux.
+ * @param structural `true` autorise la RESTRUCTURATION (changer les heures, ajouter/supprimer un créneau) ;
+ *   `false` = **valeurs seules** (heures en lecture, pas d'ajout/suppression). Côté PATIENT, ce flag reflète la
+ *   maturité (`canEditSlots` = maturité ≠ JUNIOR, US-2663) : un JUNIOR édite les valeurs, un INTERMEDIATE/CONFIRME
+ *   peut restructurer. La sûreté réelle reste SERVEUR (`evaluatePatientGroupedGate` : enveloppe minute-par-minute
+ *   vs base couvrante — aucune restructuration ne peut étendre une valeur agressive au-delà de ±10 % à une minute).
  */
 export function InsulinSlotSetDialog({
   param,

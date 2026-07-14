@@ -23,6 +23,7 @@ import { requireGdprConsent } from "@/lib/gdpr"
 import { auditService } from "@/lib/services/audit.service"
 import { patientService } from "@/lib/services/patient.service"
 import { insulinTherapyService } from "@/lib/services/insulin-therapy.service"
+import { treatmentModeService } from "@/lib/services/treatment-mode.service"
 import { adjustmentService } from "@/lib/services/adjustment.service"
 import { buildTreatmentView } from "@/lib/insulin/treatment-view"
 import { PatientInsulinClient } from "@/components/diabeo/patient/PatientInsulinClient"
@@ -87,6 +88,18 @@ export default async function PatientInsulinTherapyPage() {
     }
   }
 
+  // US-2663 — le patient peut-il RESTRUCTURER ses créneaux (pas seulement les valeurs) ? Dérivé serveur
+  // (`canEditSlots` = VIEWER & maturité ≠ JUNIOR & mode éditable). Ne pilote QUE l'UI ; la sûreté réelle est
+  // la garde serveur `evaluatePatientGroupedGate` (enveloppe minute-par-minute). Fail-closed à false.
+  let canRestructure = false
+  if (patientId !== null) {
+    try {
+      canRestructure = (await treatmentModeService.getInsulinEditCapability("VIEWER", patientId)).canEditSlots
+    } catch {
+      canRestructure = false
+    }
+  }
+
   // US-2664 — les demandes en attente du PATIENT (SES propres propositions uniquement). Le filtre
   // `sources: ["patient"]` est imposé ICI (serveur, own-id) — jamais une dose non validée d'un soignant/
   // de l'algorithme (risque d'auto-injection, ADR #13). Dégradation gracieuse en cas d'erreur.
@@ -127,7 +140,7 @@ export default async function PatientInsulinTherapyPage() {
 
       <div id="patient-insulin-content">
         {treatmentView !== null && patientId !== null ? (
-          <PatientInsulinClient patientId={patientId} data={treatmentView} proposals={ownProposals} />
+          <PatientInsulinClient patientId={patientId} data={treatmentView} canRestructure={canRestructure} proposals={ownProposals} />
         ) : (
           <div role="status" className="rounded-md border border-feedback-warning bg-feedback-warning-bg p-4 text-sm text-feedback-warning-fg">
             {t("unavailable")}

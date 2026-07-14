@@ -56,9 +56,10 @@ const fmtRanges = (ranges: TimeRange[]) =>
  *   d'ensemble pour revue médecin (NURSE / patient). Une baisse basale POMPE n'exige PAS d'accusé DKA
  *   (contrairement au stylo — cf. `InsulinStyloBasalDialog`).
  * @param audience `"pro"` (soignant) vs `"patient"` (own-id). Ignoré en mode `direct`.
- * @param structural `true` (défaut) autorise la RESTRUCTURATION (changer les temps, ajouter/supprimer un
- *   créneau) ; `false` = **valeurs seules** (temps en lecture). Le patient est en valeurs seules : le serveur
- *   refuse toute restructuration côté patient (`structuralChangeNotAllowed`).
+ * @param structural `true` autorise la RESTRUCTURATION (changer les temps, ajouter/supprimer un créneau) ;
+ *   `false` = **valeurs seules** (temps en lecture). Côté PATIENT, reflète la maturité (US-2663 : JUNIOR =
+ *   valeurs seules ; INTERMEDIATE/CONFIRME = restructuration). La sûreté reste SERVEUR
+ *   (`evaluatePatientGroupedGate` : enveloppe minute-par-minute — une baisse pompe exige INTERMEDIATE+).
  */
 export function InsulinBasalSlotSetDialog({
   paramLabel,

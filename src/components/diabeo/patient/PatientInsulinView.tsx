@@ -58,10 +58,16 @@ function SlotRows({ rows, unit, emptyLabel }: { rows: Row[]; unit: string; empty
 export function PatientInsulinView({
   data,
   canPropose = false,
+  canRestructure = false,
   proposals = [],
 }: {
   data: TreatmentView
   canPropose?: boolean
+  /** US-2663 — le patient peut RESTRUCTURER ses créneaux ISF/ICR/pompe (déplacer/ajouter/supprimer)
+   *  et pas seulement leurs valeurs. Dérivé serveur (`canEditSlots` = maturité ≠ JUNIOR). La sûreté réelle
+   *  est la garde serveur `evaluatePatientGroupedGate` (enveloppe minute-par-minute) ; ceci ne pilote que
+   *  l'UI. Le STYLO reste toujours en valeurs-seules (modalité verrouillée). */
+  canRestructure?: boolean
   /** US-2664 — demandes en attente DU PATIENT (`source=patient`, filtré serveur). Rendu **sécurisé**
    *  (audience `patient`) : sans badge clinicien, bandeau « ne modifiez pas vos doses », ton non-prescriptif. */
   proposals?: ProposalViewItem[]
@@ -134,7 +140,7 @@ export function PatientInsulinView({
               bounds={PARAM_BOUNDS.insulinSensitivityFactor}
               mode="propose"
               audience="patient"
-              structural={false}
+              structural={canRestructure}
             />
           )}
         </CardContent>
@@ -157,7 +163,7 @@ export function PatientInsulinView({
               bounds={PARAM_BOUNDS.insulinToCarbRatio}
               mode="propose"
               audience="patient"
-              structural={false}
+              structural={canRestructure}
             />
           )}
         </CardContent>
@@ -194,7 +200,7 @@ export function PatientInsulinView({
                   bounds={PARAM_BOUNDS.basalRate}
                   mode="propose"
                   audience="patient"
-                  structural={false}
+                  structural={canRestructure}
                 />
               )}
             </>

@@ -93,6 +93,13 @@ export const CLINICAL_BOUNDS = {
    */
   PATIENT_MAX_CHANGE_PERCENT: 10,
   /**
+   * US-2663 — Durée MINIMALE (minutes) d'un créneau ISF/ICR/pompe produit par une RESTRUCTURATION
+   * patient (garde anti-fragmentation, revue `medical-domain-validator`). Empêche l'émiettement de la
+   * journée en micro-créneaux (illisible en revue médecin, charge du résolveur horaire). La cardinalité
+   * est déjà bornée à 24 par la route. Décision interne (30 min = granularité de titration raisonnable).
+   */
+  PATIENT_RESTRUCTURE_MIN_SLOT_MINUTES: 30,
+  /**
    * US-2650 — Fenêtre de COOLDOWN (heures) entre deux propositions PATIENT sur le MÊME
    * (patient × paramètre × créneau). Anti-churn : empêche le spam « résolu → re-proposé » et
    * le bruit de notification relecteur. N'est PAS le gouverneur de titration (le médecin l'est) ;

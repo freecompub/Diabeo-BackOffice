@@ -240,9 +240,11 @@ const ERROR_KEY: Record<string, string> = {
   patientDeltaTooLarge: "slotSetErrorDeltaTooLarge",
   noChangeProposed: "slotSetErrorNoChange",
   deliveryModeMismatch: "slotSetErrorModeMismatch",
-  // Restructuration interdite côté PATIENT (re-partition de créneaux / ajout-retrait / bascule de modalité) :
-  // un patient édite des VALEURS, pas la structure. Filet UX (l'UI patient est déjà « valeurs seules »).
+  // Restructuration refusée : JUNIOR (valeurs seules), bascule de modalité stylo single↔split, ou base
+  // incomplète (US-2663 — la restructuration est rouverte à INTERMEDIATE+, gatée par enveloppe minute serveur).
   structuralChangeNotAllowed: "slotSetErrorStructural",
+  // Restructuration produisant un créneau trop court (anti-fragmentation).
+  restructureSlotTooShort: "slotSetErrorSlotTooShort",
   forbidden: "slotSetErrorForbidden",
   rateLimitExceeded: "slotSetErrorRateLimited",
 }
