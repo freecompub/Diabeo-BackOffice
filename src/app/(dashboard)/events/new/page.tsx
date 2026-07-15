@@ -23,7 +23,8 @@
  * Validation mirrors the Zod schema in src/lib/validators/events.ts.
  * Unsaved changes are protected by a beforeunload listener.
  *
- * On success, POSTs to /api/events and redirects to /dashboard.
+ * On success, POSTs to /api/events and redirects to `/` — la racine résout la
+ * home du rôle courant (jamais `/dashboard`, vue patient orpheline hors homes).
  *
  * @see src/lib/validators/events.ts — canonical validation rules
  * @see src/app/api/events/route.ts — API endpoint
@@ -489,7 +490,13 @@ export default function NewEventPage() {
             detail: { event: "event_form_submit_success" },
           })
         )
-        router.push("/dashboard")
+        // Redirection role-aware : `/` est la racine `(dashboard)/page.tsx` qui
+        // redirige chaque rôle vers SA home (DOCTOR → /medecin, NURSE → /infirmier,
+        // ADMIN → /admin, VIEWER → /patient/dashboard). Corrige l'incohérence D1
+        // (doc homes-par-role) : l'ancienne cible `/dashboard` est une vue glycémie
+        // PATIENT orpheline (US-WEB-201), non gardée par rôle et hors des homes —
+        // un professionnel y atterrissait sur une vue patient scopée à lui-même.
+        router.push("/")
         return
       }
 
