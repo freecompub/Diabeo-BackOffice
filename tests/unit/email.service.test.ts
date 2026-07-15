@@ -162,7 +162,7 @@ describe("emailService", () => {
       expect(result.sent).toBe(true)
       const args = mockEmailsSend.mock.calls[0][0] as { to: string; subject: string; html: string; text: string }
       expect(args.to).toBe("doctor@example.com")
-      expect(args.html).toContain("https://app.diabeo.fr/dashboard/emergencies/42")
+      expect(args.html).toContain("https://app.diabeo.fr/patients/1234")
       expect(args.html).toContain("Patient #1234")
     })
 

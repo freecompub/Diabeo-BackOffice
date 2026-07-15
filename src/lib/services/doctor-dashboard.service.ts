@@ -707,7 +707,10 @@ export async function getPatientFlags(patientId: number): Promise<PatientFlags> 
 // ─────────────────────────────────────────────────────────────
 
 export type KpiCard = {
-  /** Stable identifier — drives drill-down navigation. */
+  /** Stable identifier of the metric + its i18n label. D3 — les tuiles KPI sont
+   *  des indicateurs en LECTURE SEULE (glanceable) ; aucun drill-down n'est câblé
+   *  côté UI (KpiSection rend des MetricCard non interactifs). Ne pas documenter
+   *  une navigation inexistante. */
   code: "activePatients" | "avgTir" | "weekUrgencies" | "pendingProposals"
   value: number
   /** Optional delta (raw difference vs previous window). */

@@ -19,13 +19,11 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { useTranslations } from "next-intl"
 import {
-  Settings,
   LogOut,
   Menu,
   ChevronLeft,
   ChevronRight,
   Bell,
-  RefreshCw,
   Search,
   User,
 } from "lucide-react"
@@ -82,7 +80,6 @@ interface NavigationShellProps {
   breadcrumbs?: BreadcrumbItem[]
   userRole?: UserRole
   userName?: string
-  onRefresh?: () => void
   /**
    * US-3356 — Variant selector for nav items.
    *
@@ -360,7 +357,6 @@ export function NavigationShell({
   breadcrumbs = [],
   userRole = "VIEWER",
   userName,
-  onRefresh,
   variant = "pro",
   canManageOrg = false,
 }: NavigationShellProps) {
@@ -565,16 +561,9 @@ export function NavigationShell({
                 </button>
               )}
 
-              {/* Refresh button */}
-              {onRefresh && (
-                <button
-                  onClick={onRefresh}
-                  className="rounded-lg p-2 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-                  aria-label={t("common.refresh")}
-                >
-                  <RefreshCw className="h-5 w-5" />
-                </button>
-              )}
+              {/* D5 — bouton Rafraîchir retiré : la prop `onRefresh` n'était
+                  passée par AUCUN appelant (les cartes gèrent leur propre polling
+                  via usePollingFetch), donc le bouton n'était jamais rendu. */}
 
               {/* Notifications */}
               <button
@@ -605,16 +594,13 @@ export function NavigationShell({
                       <DropdownMenuSeparator />
                     </>
                   )}
+                  {/* D7 — un seul accès aux réglages depuis le menu avatar :
+                      « Mon profil » → /settings. L'item « Paramètres » (même URL)
+                      a été retiré (doublon) — « Paramètres » reste dans la sidebar. */}
                   <DropdownMenuItem>
                     <Link href="/settings" className="flex items-center gap-2 w-full">
                       <User className="h-4 w-4" />
                       {t("nav.profile")}
-                    </Link>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem>
-                    <Link href="/settings" className="flex items-center gap-2 w-full">
-                      <Settings className="h-4 w-4" />
-                      {t("nav.settings")}
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />

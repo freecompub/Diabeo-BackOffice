@@ -304,7 +304,6 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/api/:path*",
-    "/dashboard/:path*",
     "/patients/:path*",
     "/analytics/:path*",
     "/documents/:path*",
@@ -333,7 +332,6 @@ export const config = {
     "/insulin-therapy/:path*",
     "/weekly/:path*",
     "/adjustment-proposals/:path*",
-    "/events/:path*",
     /** US-2500-UI — Calendrier RDV pro. */
     "/appointments/:path*",
     /**

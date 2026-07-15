@@ -23,18 +23,19 @@ import {
   type DashboardPillVariant,
 } from "@/components/diabeo/dashboard/DashboardPill"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
-import type { PatientAtRiskItem } from "@/lib/services/doctor-dashboard.service"
+import type { PatientAtRiskItem, RiskReason } from "@/lib/services/doctor-dashboard.service"
 
 type ApiResponse = { items: PatientAtRiskItem[] }
 
 // Motif de suivi → teinte avatar + variante pill (libellés localisés via i18n,
-// jamais portés par la seule couleur). `tirDrop` resté absent côté service
-// (code-review L6) — réintroduire ici si la query le réémet un jour.
-const REASON_TINT: Record<string, DashboardAvatarTint> = {
+// jamais portés par la seule couleur). D8 — maps typées sur `RiskReason`
+// (exhaustives) : plus de clé fantôme (`tirDrop` retiré du service, code-review
+// L6) et tout nouveau motif force la mise à jour de ces deux maps (type-check).
+const REASON_TINT: Record<RiskReason, DashboardAvatarTint> = {
   recentHypos: "error",
   silentMonitoring: "warning",
 }
-const REASON_PILL: Record<string, DashboardPillVariant> = {
+const REASON_PILL: Record<RiskReason, DashboardPillVariant> = {
   recentHypos: "error",
   silentMonitoring: "warning",
 }

@@ -478,7 +478,9 @@ export const emailService = {
     patientInternalId: number
   }): Promise<EmailResult> {
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://app.diabeo.fr"
-    const deepLink = `${baseUrl}/dashboard/emergencies/${input.alertId}`
+    // Cible = dossier patient (page réelle) ; `/dashboard/emergencies/:id`
+    // n'a jamais existé. `patientInternalId` = id interne opaque (jamais nominatif).
+    const deepLink = `${baseUrl}/patients/${input.patientInternalId}`
     const safePatientLabel = `Patient #${input.patientInternalId}`
 
     return this.send({

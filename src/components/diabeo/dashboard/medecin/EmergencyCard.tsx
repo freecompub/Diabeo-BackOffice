@@ -26,6 +26,7 @@ import {
   type DashboardPillVariant,
 } from "@/components/diabeo/dashboard/DashboardPill"
 import { Acronym } from "@/components/diabeo/Acronym"
+import { useGlucoseUnit } from "@/hooks/useGlucoseUnit"
 import { usePollingFetch } from "@/hooks/usePollingFetch"
 import { bcp47 } from "@/i18n/config"
 import { DASHBOARD_TIR } from "@/lib/clinical-bounds"
@@ -49,6 +50,10 @@ const SEVERITY_PILL: Record<string, DashboardPillVariant> = {
 export function EmergencyCard() {
   const t = useTranslations("dashboard.medecin")
   const locale = useLocale()
+  // ADR #32 — la valeur de l'urgence est en mg/dL (repère clinique interne) ;
+  // l'affichage convertit selon la préférence du médecin (cohérence avec les
+  // autres cartes de la home, ex. PendingProposalsCard). D2.
+  const glucoseUnit = useGlucoseUnit()
   // Nombres localisés (séparateurs/chiffres selon la locale active, ex. AR).
   const fmt = (n: number, opts?: Intl.NumberFormatOptions) =>
     n.toLocaleString(bcp47(locale), opts)
@@ -112,7 +117,7 @@ export function EmergencyCard() {
               const name = u.patientFirstName || t("patientFallback")
               const valueText =
                 u.glucoseValueMgdl !== null
-                  ? `${fmt(u.glucoseValueMgdl)} mg/dL`
+                  ? glucoseUnit.format(u.glucoseValueMgdl)
                   : u.ketoneValueMmol !== null
                   ? `${fmt(u.ketoneValueMmol, { maximumFractionDigits: 2 })} mmol/L`
                   : null

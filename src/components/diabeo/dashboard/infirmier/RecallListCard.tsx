@@ -40,6 +40,22 @@ const REASON_META: Record<
   neverSynced: { labelKey: "reasonNeverSynced", variant: "accent", tint: "neutral" },
 }
 
+/**
+ * D6 — Trace HDS d'une relance (lien natif `tel:`/`sms:`). Appel fire-and-forget
+ * (ne bloque pas l'ouverture du lien) vers `POST /api/dashboard/recall`, qui écrit
+ * un `AuditLog` `RECALL_INITIATED`. Les échecs réseau sont silencieux (best-effort)
+ * — l'audit ne doit jamais empêcher le soignant de contacter le patient.
+ */
+function logRecall(patientId: number, channel: "tel" | "sms"): void {
+  void fetch("/api/dashboard/recall", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+    credentials: "include",
+    body: JSON.stringify({ patientId, channel }),
+    keepalive: true,
+  }).catch(() => {})
+}
+
 export function RecallListCard() {
   const t = useTranslations("dashboardCards.nurseRecall")
   const { data, error, loading, isStale } = usePollingFetch<ApiResponse>(
@@ -99,6 +115,7 @@ export function RecallListCard() {
                         <>
                           <a
                             href={`tel:${phoneSafe}`}
+                            onClick={() => logRecall(r.patientId, "tel")}
                             className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-muted"
                             aria-label={t("callAria", { name })}
                           >
@@ -107,6 +124,7 @@ export function RecallListCard() {
                           </a>
                           <a
                             href={`sms:${phoneSafe}`}
+                            onClick={() => logRecall(r.patientId, "sms")}
                             className="inline-flex h-7 items-center gap-1 rounded-md border border-border px-2 text-xs hover:bg-muted"
                             aria-label={t("smsAria", { name })}
                           >
