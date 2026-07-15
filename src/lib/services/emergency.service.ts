@@ -345,7 +345,10 @@ async function notifyCriticalAlert(
               patientId: String(alert.patientId),
               alertType: alert.alertType,
               severity: alert.severity,
-              deepLink: `/dashboard/emergencies/${alert.id}`,
+              // La cible = le DOSSIER PATIENT (page réelle où le médecin agit sur
+              // l'urgence, cohérent avec le lien « Ouvrir » de l'EmergencyCard).
+              // L'ancienne cible `/dashboard/emergencies/:id` n'a jamais existé.
+              deepLink: `/patients/${alert.patientId}`,
             },
           }),
           DISPATCH_TIMEOUT_MS,

@@ -51,7 +51,7 @@ describe("POST /api/dashboard/recall — traçabilité relance (D6)", () => {
     const r = await POST(makeReq({ patientId: 42, channel: "tel" }))
     expect(r.status).toBe(201)
     expect(mLog).toHaveBeenCalledTimes(1)
-    const entry = mLog.mock.calls[0]![0] as Record<string, unknown>
+    const entry = mLog.mock.calls[0]![0]
     expect(entry.action).toBe("RECALL_INITIATED")
     expect(entry.resource).toBe("PATIENT")
     expect(entry.resourceId).toBe("42")
@@ -61,7 +61,7 @@ describe("POST /api/dashboard/recall — traçabilité relance (D6)", () => {
   it("accepte le canal sms", async () => {
     const r = await POST(makeReq({ patientId: 1, channel: "sms" }))
     expect(r.status).toBe(201)
-    expect((mLog.mock.calls[0]![0] as { metadata: { channel: string } }).metadata.channel).toBe("sms")
+    expect(mLog.mock.calls[0]![0].metadata).toMatchObject({ channel: "sms" })
   })
 
   it("rejette un body invalide (400) sans auditer", async () => {
