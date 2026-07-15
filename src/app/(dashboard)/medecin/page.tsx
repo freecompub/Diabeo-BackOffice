@@ -21,6 +21,7 @@ import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getTranslations } from "next-intl/server"
 import type { Role } from "@prisma/client"
+import { hasMinRole } from "@/lib/auth/rbac"
 import { triageSummaryQuery } from "@/lib/services/doctor-dashboard.service"
 import { DashboardGreeting } from "@/components/diabeo/dashboard/DashboardGreeting"
 import { EmergencyCard } from "@/components/diabeo/dashboard/medecin/EmergencyCard"
@@ -93,8 +94,17 @@ export default async function MedecinDashboardPage() {
         <RecallListCard />
         <UnreadMessagesCard />
       </div>
-      <PatientsAtRiskCard />
-      <KpiSection />
+      {/* D9 — « Patients à suivre » et les KPI cabinet appellent des routes
+          `requireRole("DOCTOR")` (hiérarchique : DOCTOR + ADMIN, PAS NURSE). On
+          ne les rend donc que pour un rôle ≥ DOCTOR : un NURSE affichant cette
+          home partagée n'obtient plus 2 cartes en erreur 403, mais un affichage
+          épuré aligné sur ses droits réels. */}
+      {hasMinRole(role as Role, "DOCTOR") && (
+        <>
+          <PatientsAtRiskCard />
+          <KpiSection />
+        </>
+      )}
     </main>
   )
 }

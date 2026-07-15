@@ -43,6 +43,13 @@ export type AuditAction =
   | "UPDATE"
   | "DELETE"
   | "EXPORT"
+  /**
+   * D6 — Relance patient initiée par un soignant depuis le dashboard (lien natif
+   * `tel:`/`sms:`). `resource = PATIENT`, `resourceId = patientId`,
+   * `metadata.channel = "tel" | "sms"`. Trace HDS d'un geste de contact patient
+   * (l'envoi effectif via Twilio + `PatientRecallLog` reste différé).
+   */
+  | "RECALL_INITIATED"
   | "UNAUTHORIZED"
   | "RATE_LIMITED"
   | "CONFIG_ERROR"
