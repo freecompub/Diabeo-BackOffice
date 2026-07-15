@@ -190,3 +190,130 @@ sudo systemctl enable --now diabeo-backup.timer
 - [ ] `https://staging.diabeo.fr` répond, login OK.
 - [ ] Boot sans crash env (sinon lire le message d'`assertRequiredEnv`).
 - [ ] `docs/runbook/release-glycemie-gl.md` → smoke tests de la release en cours.
+
+---
+
+## 11. DNS — lier le domaine & créer le sous-domaine recette
+
+Un domaine pointe vers un VPS via un enregistrement DNS **de type `A`** (IPv4,
+`AAAA` pour IPv6) dans la **zone DNS** du domaine. Rappel des cibles Diabeo :
+`app.diabeo.fr` = prod, **`staging.diabeo.fr` = recette**.
+
+1. **IP publique du VPS** : `curl -4 ifconfig.me`.
+2. **Zone DNS de `diabeo.fr`** — chez OVH : *Espace client → Web Cloud → Noms de
+   domaine → `diabeo.fr` → Zone DNS*. (Si les serveurs de noms sont délégués
+   ailleurs, ex. Cloudflare, éditer la zone **là où elle est hébergée**.)
+3. **Ajouter les entrées A** (cible = IP du VPS) :
+
+   | Sous-domaine | Type | Cible | Résout |
+   |---|---|---|---|
+   | *(vide / `@`)* | A | `<IP_PROD>` | `diabeo.fr` |
+   | `app` | A | `<IP_PROD>` | `app.diabeo.fr` (prod) |
+   | **`staging`** | **A** | `<IP_RECETTE>` | **`staging.diabeo.fr` (recette)** |
+
+   → **Créer le sous-domaine recette = ajouter l'entrée A `staging`** (« Ajouter une
+   entrée » → type `A` → sous-domaine `staging` → cible = IP VPS → TTL 3600).
+4. **Propagation** (min → ~1 h selon TTL) puis vérifier :
+   `dig +short staging.diabeo.fr A` (doit renvoyer l'IP du VPS).
+
+> Recette + prod sur le **même VPS** : mettre `staging` et `app` sur la même IP ;
+> nginx distingue par `server_name`, chaque app sur un port distinct (3000/3001)
+> avec 2 services systemd. **`staging.diabeo.fr` doit résoudre AVANT certbot**
+> (validation HTTP-01).
+
+## 12. Séquence complète — VPS vierge → recette en ligne
+
+À exécuter APRÈS avoir créé l'entrée DNS `staging` (§11). Adapter les `<…>`.
+
+```bash
+# 0. Prérequis (root)
+sudo apt update && sudo apt install -y nginx postgresql-client git certbot python3-certbot-nginx
+corepack enable && corepack prepare pnpm@10 --activate      # Node 22 requis
+sudo useradd -m -s /bin/bash diabeo
+
+# 1. PostgreSQL 16 : base + extensions (ou OVH DBaaS → récupérer l'URL)
+sudo -u postgres psql -c "CREATE ROLE diabeo LOGIN PASSWORD '<PWD_DB>';"
+sudo -u postgres psql -c "CREATE DATABASE diabeo OWNER diabeo;"
+sudo -u postgres psql -d diabeo -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;
+  CREATE EXTENSION IF NOT EXISTS pgcrypto; CREATE EXTENSION IF NOT EXISTS btree_gist;"
+
+# 2. Secrets + fichier d'env (9 obligatoires + fonctionnels)
+sudo install -d -m 750 -o diabeo -g diabeo /etc/diabeo
+openssl genrsa -out /tmp/jwt.key 2048 && openssl rsa -in /tmp/jwt.key -pubout -out /tmp/jwt.pub
+sudo -u diabeo tee /etc/diabeo/recette.env >/dev/null <<EOF
+NODE_ENV=production
+APP_ENV=recette
+NEXT_PUBLIC_APP_URL=https://staging.diabeo.fr
+DATABASE_URL=postgresql://diabeo:<PWD_DB>@127.0.0.1:5432/diabeo?schema=public
+HEALTH_DATA_ENCRYPTION_KEY=$(openssl rand -hex 32)
+HMAC_SECRET=$(openssl rand -hex 32)
+CONVERSATION_KEY_PEPPER=$(openssl rand -hex 32)
+AUDIT_PEPPER=$(openssl rand -hex 32)
+CRON_SECRET=$(openssl rand -hex 32)
+REDIS_KEY_PREFIX=diabeo:recette:
+JWT_PRIVATE_KEY="$(cat /tmp/jwt.key)"
+JWT_PUBLIC_KEY="$(cat /tmp/jwt.pub)"
+UPSTASH_REDIS_REST_URL=<...>
+UPSTASH_REDIS_REST_TOKEN=<...>
+OVH_S3_ENDPOINT=https://s3.gra.io.cloud.ovh.net
+OVH_S3_REGION=gra
+OVH_S3_BUCKET=diabeo-documents-recette
+OVH_S3_ACCESS_KEY=<...>
+OVH_S3_SECRET_KEY=<...>
+EOF
+sudo chmod 600 /etc/diabeo/recette.env && shred -u /tmp/jwt.key /tmp/jwt.pub
+
+# 3. Code + build
+sudo -u diabeo git clone <URL_REPO> /opt/diabeo && cd /opt/diabeo
+sudo -u diabeo pnpm install --frozen-lockfile
+sudo -u diabeo pnpm prisma generate
+sudo -u diabeo pnpm build
+
+# 4. Base recette jetable : schéma cible + seed
+sudo -u diabeo --preserve-env env $(grep -v '^#' /etc/diabeo/recette.env | xargs) \
+  pnpm prisma migrate reset --force
+
+# 5. Service systemd
+sudo tee /etc/systemd/system/diabeo-recette.service >/dev/null <<'EOF'
+[Unit]
+Description=Diabeo Backoffice (recette)
+After=network.target
+[Service]
+Type=simple
+User=diabeo
+WorkingDirectory=/opt/diabeo
+EnvironmentFile=/etc/diabeo/recette.env
+ExecStart=/usr/bin/pnpm start
+Restart=on-failure
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+EOF
+sudo systemctl daemon-reload && sudo systemctl enable --now diabeo-recette
+
+# 6. nginx + TLS (DNS staging → VPS déjà propagé, cf. §11)
+sudo tee /etc/nginx/conf.d/diabeo-recette.conf >/dev/null <<'EOF'
+server {
+  server_name staging.diabeo.fr;
+  client_max_body_size 10m;
+  location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+EOF
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d staging.diabeo.fr
+
+# 7. Vérification
+cd /opt/diabeo && APP_ENV=recette ./deploy.sh status
+curl -I https://staging.diabeo.fr
+```
+
+**Déploiements suivants** : `cd /opt/diabeo && APP_ENV=recette ./deploy.sh update`.
+
+> ⚠️ **Ne jamais régénérer `HEALTH_DATA_ENCRYPTION_KEY` après le 1er boot** sans plan
+> de rotation : il déchiffre les données de santé existantes. **Redis Upstash** et
+> **OVH Object Storage** sont des services managés (créés dans leurs consoles).
