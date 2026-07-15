@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diabeo — Homes par rôle (documentation fidèle au code)</title>
+<style>
+  :root{
+    --teal:#0D9488; --teal-700:#0f766e; --teal-50:#f0fdfa; --teal-100:#ccfbf1;
+    --coral:#F97316; --coral-50:#fff7ed;
+    --bg:#FAFAFA; --bg2:#F3F4F6; --card:#ffffff;
+    --ink:#1F2937; --ink2:#6B7280; --line:#e5e7eb;
+    --ok:#10B981; --warn:#F59E0B; --crit:#EF4444;
+    --indigo:#4f46e5;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--teal-700)}
+  code,.mono{font-family:var(--mono);font-size:.86em;background:var(--bg2);padding:.1em .35em;border-radius:4px;color:#0f172a}
+  .wrap{display:grid;grid-template-columns:270px 1fr;max-width:1400px;margin:0 auto;gap:0}
+  /* TOC */
+  nav.toc{position:sticky;top:0;align-self:start;height:100vh;overflow:auto;
+    background:#0b3b38;color:#d1faf4;padding:22px 18px;font-size:13.5px}
+  nav.toc h2{color:#fff;font-size:15px;margin:0 0 4px}
+  nav.toc .sub{color:#7fd8cd;font-size:11.5px;margin:0 0 18px}
+  nav.toc a{display:block;color:#bdeee6;text-decoration:none;padding:4px 8px;border-radius:6px;margin:1px 0}
+  nav.toc a:hover{background:#125a54;color:#fff}
+  nav.toc a.grp{margin-top:12px;font-weight:700;color:#fff;text-transform:uppercase;font-size:11px;letter-spacing:.04em}
+  nav.toc a.role{padding-left:16px}
+  main{padding:34px 46px;min-width:0}
+  header.hero{background:linear-gradient(135deg,var(--teal),#0b6b63);color:#fff;border-radius:16px;padding:30px 34px;margin-bottom:8px}
+  header.hero h1{margin:0 0 6px;font-size:27px}
+  header.hero p{margin:4px 0;color:#d9f6f1;max-width:70ch}
+  .pill{display:inline-block;background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.3);
+    padding:2px 10px;border-radius:999px;font-size:12px;margin:6px 6px 0 0}
+  section{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:24px 26px;margin:20px 0}
+  h2.sec{font-size:21px;margin:0 0 4px;color:#0b3b38;border-bottom:2px solid var(--teal-100);padding-bottom:8px}
+  h3{font-size:17px;margin:22px 0 8px;color:var(--teal-700)}
+  h4{font-size:14px;margin:16px 0 6px;color:var(--ink);text-transform:uppercase;letter-spacing:.03em}
+  p.lead{color:var(--ink2)}
+  table{border-collapse:collapse;width:100%;font-size:13px;margin:10px 0}
+  th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+  th{background:var(--bg2);font-weight:600;color:#374151}
+  tbody tr:nth-child(even){background:#fbfdfd}
+  .src{font-family:var(--mono);font-size:11.5px;color:#0f766e;white-space:nowrap}
+  .tblwrap{overflow-x:auto}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;white-space:nowrap}
+  .ok{background:#dcfce7;color:#166534} .dead{background:#fee2e2;color:#991b1b}
+  .partial{background:#fef3c7;color:#92400e} .info{background:#e0e7ff;color:#3730a3}
+  .role-badge{display:inline-block;padding:3px 12px;border-radius:8px;color:#fff;font-weight:700;font-size:13px}
+  .r-patient{background:var(--ok)} .r-doctor{background:var(--teal)} .r-nurse{background:var(--indigo)} .r-admin{background:#334155}
+  /* callouts */
+  .callout{border-left:5px solid;border-radius:8px;padding:12px 16px;margin:12px 0;font-size:14px}
+  .c-crit{border-color:var(--crit);background:#fef2f2}
+  .c-warn{border-color:var(--warn);background:#fffbeb}
+  .c-info{border-color:var(--teal);background:var(--teal-50)}
+  .callout b{color:#111}
+  .sev{font-weight:800;font-size:11px;text-transform:uppercase;letter-spacing:.05em;padding:1px 8px;border-radius:6px;margin-right:6px}
+  .sev-major{background:var(--crit);color:#fff} .sev-med{background:var(--warn);color:#3a2a00} .sev-min{background:#cbd5e1;color:#1e293b}
+  /* screen reconstruction */
+  .mock{border:1px solid var(--line);border-radius:12px;overflow:hidden;margin:14px 0;box-shadow:0 2px 10px rgba(0,0,0,.05)}
+  .mock-cap{font-size:11.5px;color:var(--ink2);background:#fff8f0;border:1px dashed var(--coral);border-radius:8px;padding:6px 10px;margin:8px 0}
+  .app{display:grid;grid-template-columns:180px 1fr;min-height:280px;background:var(--bg2);font-size:12px}
+  .app .side{background:#fff;border-right:1px solid var(--line);padding:12px 10px}
+  .app .side .logo{font-weight:800;color:var(--teal);font-size:14px;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+  .app .side .navi{display:block;padding:6px 9px;border-radius:7px;color:#374151;margin:2px 0;text-decoration:none}
+  .app .side .navi.act{background:var(--teal-50);color:var(--teal-700);font-weight:700}
+  .app .side .navi.muted{color:#9ca3af}
+  .app .side .sep{border-top:1px solid var(--line);margin:10px 0 6px;padding-top:6px;font-size:10px;color:#9ca3af;text-transform:uppercase}
+  .app .main{padding:14px 16px}
+  .app .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+  .app .topbar .title{font-weight:800;font-size:15px;color:#0b3b38}
+  .app .icons{display:flex;gap:8px;align-items:center;color:#9ca3af}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px}
+  .kpi .lab{font-size:10.5px;color:var(--ink2)} .kpi .val{font-size:19px;font-weight:800;color:#0b3b38}
+  .kpi .val small{font-size:11px;color:var(--ink2);font-weight:600}
+  .cardm{background:#fff;border:1px solid var(--line);border-radius:10px;padding:10px;margin-top:10px}
+  .cardm .h{font-weight:700;font-size:12px;color:#0b3b38;margin-bottom:6px;display:flex;justify-content:space-between}
+  .rowm{display:flex;justify-content:space-between;padding:5px 0;border-top:1px dashed var(--line);font-size:11px}
+  .chip{font-size:9.5px;padding:1px 6px;border-radius:999px;background:var(--bg2);color:#475569}
+  .chip.crit{background:#fee2e2;color:#991b1b} .chip.warn{background:#fef3c7;color:#92400e} .chip.ok{background:#dcfce7;color:#166534}
+  .btnm{display:inline-block;font-size:10px;padding:3px 8px;border-radius:6px;background:var(--teal);color:#fff}
+  .btnm.ghost{background:#fff;border:1px solid var(--teal);color:var(--teal-700)}
+  .btnm.dead{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+  .qa{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:8px}
+  .qa .qab{background:var(--teal-50);border:1px solid var(--teal-100);border-radius:9px;padding:10px;text-align:center;font-size:10.5px;color:var(--teal-700);position:relative}
+  .qa .qab .x{position:absolute;top:3px;right:5px;color:var(--crit);font-size:11px}
+  .chart{height:74px;background:linear-gradient(180deg,#fff, #fff),repeating-linear-gradient(90deg,var(--bg2) 0 1px,transparent 1px 34px);
+    border:1px solid var(--line);border-radius:8px;margin-top:8px;position:relative;overflow:hidden}
+  .chart svg{position:absolute;inset:0;width:100%;height:100%}
+  .foot{color:var(--ink2);font-size:12.5px;text-align:center;padding:26px 0 40px}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;margin:6px 0 0}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .dot{width:10px;height:10px;border-radius:3px;display:inline-block}
+  @media(max-width:900px){.wrap{grid-template-columns:1fr}nav.toc{position:static;height:auto}main{padding:20px}.app{grid-template-columns:1fr}.grid4,.qa{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav class="toc">
+  <h2>Homes par rôle</h2>
+  <p class="sub">Documentation fidèle au code · 2026-07-15</p>
+  <a href="#intro">Méthodologie &amp; avertissement</a>
+  <a href="#modele">Modèle d'accès global</a>
+  <a href="#nav">Navigation partagée (NavigationShell)</a>
+  <a class="grp">Homes</a>
+  <a class="role" href="#patient">🟢 Patient (VIEWER)</a>
+  <a class="role" href="#medecin">🩺 Médecin (DOCTOR)</a>
+  <a class="role" href="#infirmier">💉 Infirmier (NURSE)</a>
+  <a class="role" href="#admin">🛡️ Administrateur (ADMIN)</a>
+  <a class="grp">Synthèse</a>
+  <a href="#incoherences">⚠️ Incohérences (transverse)</a>
+  <a href="#tables">Tables de données par home</a>
+</nav>
+
+<main>
+<header class="hero">
+  <h1>Diabeo Backoffice — Documentation des <em>homes</em> par rôle</h1>
+  <p>Description exhaustive de chaque page d'accueil (« home ») : actions réalisables, informations affichées et leur source de donnée, reconstitutions d'écran, et incohérences détectées. <b>Chaque affirmation est tracée depuis le code</b> (référence <code>fichier:ligne</code>) — aucune supposition.</p>
+  <div>
+    <span class="pill">Source unique : le code</span>
+    <span class="pill">4 rôles · 4 homes</span>
+    <span class="pill">Reconstitutions HTML (données illustratives)</span>
+    <span class="pill">Généré 2026-07-15</span>
+  </div>
+</header>
+
+<!-- ============ INTRO ============ -->
+<section id="intro">
+  <h2 class="sec">Méthodologie &amp; avertissement</h2>
+  <p class="lead">Ce document est <b>l'image du comportement réel du code</b> à la date de génération. Il a été produit par parcours direct des composants de page, de la navigation, des routes API, des services et du schéma Prisma.</p>
+  <ul>
+    <li><b>Traçage bout-en-bout</b> : pour chaque information, la chaîne <code>composant → fetch("/api/…") → route API → service → table Prisma</code> est indiquée avec <code>fichier:ligne</code>.</li>
+    <li><b>Vérification des cibles</b> : chaque lien/route a été vérifié (la page existe ou non).</li>
+    <li><b>Incohérences</b> : les actions non câblées, routes/pages inexistantes, données jamais alimentées et écarts doc↔code sont listés (§ dédiée + par rôle), triés par sévérité.</li>
+    <li><b>Reconstitutions d'écran</b> : les maquettes sont <span style="color:var(--coral);font-weight:700">reconstruites en HTML/CSS à partir de la structure réelle du code et des libellés i18n FR</span>. Les <b>valeurs numériques sont illustratives</b> (aucune donnée patient réelle) — voir l'étiquette sous chaque maquette.</li>
+  </ul>
+  <div class="callout c-info"><b>Convention d'unité glycémique</b> — Depuis l'ADR #32, l'unité canonique de stockage/API est <b>g/L</b> (1 g/L = 100 mg/dL) ; l'affichage convertit selon <code>UserUnitPreferences.unitGlycemia</code> (3=g/L, 4=mg/dL, 5=mmol/L) via <code>src/lib/glucose/units.ts</code> et le hook <code>useGlucoseUnit</code>. Les écarts d'application de cette préférence sont signalés.</div>
+</section>
+
+<!-- ============ MODELE ============ -->
+<section id="modele">
+  <h2 class="sec">Modèle d'accès global — où atterrit chaque rôle</h2>
+  <p class="lead">Source de vérité du mapping rôle → home : <code class="src">src/lib/auth/role-home.ts:18-21</code> (<code>ROLE_TO_HOME</code>).</p>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Rôle</th><th>Home (route)</th><th>Fichier page</th><th>Type</th></tr></thead>
+    <tbody>
+      <tr><td><span class="role-badge r-patient">VIEWER (patient)</span></td><td><code>/patient/dashboard</code></td><td><code class="src">app/(patient)/patient/dashboard/page.tsx</code></td><td>Client</td></tr>
+      <tr><td><span class="role-badge r-doctor">DOCTOR</span></td><td><code>/medecin</code></td><td><code class="src">app/(dashboard)/medecin/page.tsx</code></td><td>Server</td></tr>
+      <tr><td><span class="role-badge r-nurse">NURSE</span></td><td><code>/infirmier</code></td><td><code class="src">app/(dashboard)/infirmier/page.tsx</code></td><td>Server</td></tr>
+      <tr><td><span class="role-badge r-admin">ADMIN</span></td><td><code>/admin</code></td><td><code class="src">app/(dashboard)/admin/page.tsx</code></td><td>Server</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Chaîne de gating (défense en profondeur)</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Couche</th><th>Rôle</th><th>Comportement</th><th>Preuve</th></tr></thead>
+    <tbody>
+      <tr><td>1. Middleware JWT</td><td>Authentifie, vérifie révocation Redis + timeout d'inactivité, <b>injecte</b> <code>x-user-role</code>. <b>N'enforce pas le rôle</b> par route.</td><td>token invalide/expiré → <code>/login</code> ; PHI → <code>Cache-Control: no-store</code></td><td><code class="src">middleware.ts:246-248, 283-285, 300, 315-341</code></td></tr>
+      <tr><td>2. Layout</td><td>rôle invalide/absent → <code>/login</code> ; VIEWER dans <code>(dashboard)</code> → <code>/patient/dashboard</code> ; pro dans <code>(patient)</code> → home rôle</td><td>bornage de groupe de routes</td><td><code class="src">(dashboard)/layout.tsx:30-40</code> · <code class="src">(patient)/layout.tsx:36-44</code></td></tr>
+      <tr><td>3. Page (soft bounce)</td><td>set de rôles autorisés ; sinon <code>redirect</code>. Ex. <code>/admin</code> → <code>redirect("/")</code> si ≠ ADMIN</td><td>UX, pas la sécurité réelle</td><td><code class="src">admin/page.tsx:27</code> · <code class="src">medecin/page.tsx:40-45</code></td></tr>
+      <tr><td>4. Routes API (autorité réelle)</td><td><code>requireRole</code> / <code>auditedRequireRole</code> + <code>canAccessPatient</code> ; scope patient résolu serveur (anti-IDOR : un VIEWER ignore tout <code>?patientId</code>)</td><td>audit systématique</td><td><code class="src">lib/auth · lib/access-control.ts:97-127</code></td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout c-warn"><span class="sev sev-med">Note</span> Le gating de rôle sur les <b>pages</b> est purement UX (redirect applicatif) ; l'autorisation réelle vit dans les routes API. Une page SSR mal gardée qui ne consomme pas d'API resterait affichable — cf. incohérence <a href="#inc-dashboard">/dashboard non gardé</a>.</div>
+</section>
+
+<!-- ============ NAV PARTAGEE ============ -->
+<section id="nav">
+  <h2 class="sec">Navigation partagée — <code>NavigationShell</code></h2>
+  <p class="lead">Les 3 homes pro (médecin, infirmier, admin) partagent le même shell <code class="src">NavigationShell variant="pro"</code> ; le patient utilise <code>variant="patient"</code>. La sidebar est un sous-ensemble « maigre » (<code class="src">SIDEBAR_ORDER</code>, navigation-items.tsx:94-105), filtré par rôle (<code>hasRoleAccess</code>, hiérarchie VIEWER0&lt;NURSE1&lt;DOCTOR2&lt;ADMIN3).</p>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Item sidebar (i18n FR)</th><th>Route</th><th><code>minRole</code></th><th>Patient</th><th>Nurse</th><th>Doctor</th><th>Admin</th><th>Page existe ?</th></tr></thead>
+    <tbody>
+      <tr><td>Tableau de bord / « Ma journée » (DOCTOR)</td><td><code>home rôle</code></td><td>—</td><td>✔ (/patient/dashboard)</td><td>✔ /infirmier</td><td>✔ /medecin</td><td>✔ /admin</td><td class="tag ok">oui</td></tr>
+      <tr><td>Patients</td><td><code>/patients</code></td><td>—</td><td>—</td><td>✔</td><td>✔</td><td>✔</td><td class="tag ok">oui</td></tr>
+      <tr><td>Rendez-vous</td><td><code>/appointments</code> · patient : <code>/patient/appointments</code></td><td>NURSE</td><td>✔ (variante patient)</td><td>✔</td><td>✔</td><td>✔</td><td class="tag ok">oui</td></tr>
+      <tr><td>Messagerie</td><td><code>/messages</code></td><td>—</td><td>—</td><td>✔ (badge)</td><td>✔ (badge)</td><td>✔ (badge)</td><td class="tag ok">oui</td></tr>
+      <tr><td>Documents</td><td><code>/documents</code></td><td>—</td><td>—</td><td>✔</td><td>✔</td><td>✔</td><td class="tag ok">oui</td></tr>
+      <tr><td>Analytics</td><td><code>/analytics</code></td><td>—</td><td>—</td><td>✔</td><td>✔</td><td>✔</td><td class="tag ok">oui</td></tr>
+      <tr><td>Insulinothérapie</td><td><code>/patient/insulin-therapy</code> (patient) · <code>/insulin-therapy</code> (pro, palette)</td><td>NURSE</td><td>✔ (variante patient)</td><td>Ctrl-K</td><td>Ctrl-K</td><td>Ctrl-K</td><td class="tag ok">oui</td></tr>
+      <tr><td>Paramètres</td><td><code>/settings</code> <span class="tag partial">hors groupe (dashboard)</span></td><td>—</td><td>✔</td><td>✔</td><td>✔</td><td>✔</td><td class="tag ok">oui</td></tr>
+    </tbody>
+  </table></div>
+  <p class="lead">Éléments de header (shell pro) : <b>recherche/palette Ctrl-K</b> (staff uniquement), <b>bouton Rafraîchir</b> (rendu <i>seulement si</i> <code>onRefresh</code> passé — jamais par les homes), <b>cloche Notifications</b>, menu utilisateur (Profil / Paramètres / Déconnexion).</p>
+  <div class="callout c-crit"><span class="sev sev-med">Incohérence transverse</span> <b>La cloche « Notifications » n'a aucun <code>onClick</code>/handler</b> sur toutes les homes — bouton purement décoratif. <code class="src">NavigationShell.tsx:580-585</code></div>
+  <div class="callout c-warn"><span class="sev sev-min">Incohérence transverse</span> Menu utilisateur : « Mon profil » et « Paramètres » pointent <b>la même URL <code>/settings</code></b>. <code class="src">NavigationShell.tsx:609,615</code> — et <code>/settings</code> est servi <b>hors du shell</b> (<code>src/app/settings/</code>), donc la sidebar disparaît en y naviguant.</div>
+</section>
+
+<!-- ============ PATIENT ============ -->
+<section id="patient">
+  <h2 class="sec"><span class="role-badge r-patient">Patient — VIEWER</span> &nbsp;Home <code>/patient/dashboard</code></h2>
+
+  <h3>Identité &amp; accès</h3>
+  <div class="tblwrap"><table>
+    <tbody>
+      <tr><th>Route / fichier</th><td><code>/patient/dashboard</code> — <code class="src">app/(patient)/patient/dashboard/page.tsx</code> (Client, <code>"use client":15</code>)</td></tr>
+      <tr><th>Layout</th><td><code class="src">(patient)/layout.tsx:50-59</code> → <code>&lt;NavigationShell variant="patient"&gt;</code></td></tr>
+      <tr><th>Gating</th><td>Middleware (no-store PHI, <code class="src">middleware.ts:283,315</code>) + layout (VIEWER only, sinon redirect home rôle, <code class="src">:42-44</code>) + API : <b>anti-IDOR</b> — un VIEWER ignore tout <code>?patientId</code> et n'accède qu'à <code>getOwnPatientId()</code> (<code class="src">access-control.ts:124-127</code>).</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Reconstitution de l'écran</h3>
+  <div class="mock"><div class="app">
+    <div class="side">
+      <div class="logo">◉ Diabeo</div>
+      <a class="navi act">Mon tableau de bord</a>
+      <a class="navi">Rendez-vous</a>
+      <a class="navi">Insulinothérapie</a>
+      <a class="navi">Paramètres</a>
+    </div>
+    <div class="main">
+      <div class="topbar"><div class="title">Mon tableau de bord</div><div class="icons">🔔 ⟳ 👤</div></div>
+      <div style="font-size:11px;color:#6B7280;margin-bottom:8px">Aperçu des 14 derniers jours. &nbsp;·&nbsp; <span class="chip">1S</span> <span class="chip">2S</span> <span class="chip ok">1M</span> <span class="chip">3M</span></div>
+      <div class="grid4">
+        <div class="kpi"><div class="lab">Temps dans la cible (TIR)</div><div class="val">72<small>%</small></div></div>
+        <div class="kpi"><div class="lab">Glycémie moyenne</div><div class="val">1,54 <small>g/L</small></div></div>
+        <div class="kpi"><div class="lab">Variabilité (CV)</div><div class="val">34<small>%</small></div></div>
+        <div class="kpi"><div class="lab">GMI</div><div class="val">6,8<small>%</small></div></div>
+      </div>
+      <div class="cardm"><div class="h">Glycémie sur 24 h</div>
+        <div class="chart"><svg viewBox="0 0 300 74" preserveAspectRatio="none"><polyline fill="none" stroke="#0D9488" stroke-width="2" points="0,50 30,42 60,30 90,46 120,26 150,38 180,20 210,44 240,34 270,48 300,40"/></svg></div>
+      </div>
+      <div class="cardm"><div class="h">Profil ambulatoire (AGP)</div><div class="chart"></div></div>
+      <div class="cardm"><div class="h">Actions rapides</div>
+        <div class="qa">
+          <div class="qab"><span class="x">✕</span>Saisir une glycémie</div>
+          <div class="qab"><span class="x">✕</span>Ajouter un repas</div>
+          <div class="qab"><span class="x">✕</span>Calculer un bolus</div>
+          <div class="qab"><span class="x">✕</span>Exporter un rapport</div>
+        </div>
+      </div>
+    </div>
+  </div></div>
+  <div class="mock-cap">Reconstitution fidèle (structure &amp; libellés issus du code — valeurs illustratives). ✕ = bouton non câblé (toast « Bientôt disponible »).</div>
+
+  <h3>Informations affichées &amp; source de donnée</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Information (libellé FR)</th><th>Source de donnée (bout-en-bout)</th><th>Table</th><th>Unité</th></tr></thead>
+    <tbody>
+      <tr><td>KPI <b>TIR</b>, <b>Glycémie moyenne</b>, <b>CV</b>, <b>GMI</b></td>
+        <td><code class="src">page.tsx:159</code> <code>fetch("/api/analytics/glycemic-profile")</code> → <code class="src">analytics/glycemic-profile/route.ts:16-58</code> (auth+rate-limit+GDPR+shareConsent) → <code class="src">analytics.service.ts:179</code> <code>glycemicProfile()</code> → <code>prisma.cgmEntry.findMany</code></td>
+        <td>CgmEntry</td>
+        <td>Moyenne convertie via <code>useGlucoseUnit</code> ; TIR/CV/GMI en %</td></tr>
+      <tr><td><b>Graphe CGM 24 h</b> + bandeau fraîcheur</td>
+        <td><code class="src">page.tsx:158</code> <code>fetch("/api/cgm?from=&amp;to=")</code> → <code class="src">api/cgm/route.ts:16-49</code> → <code class="src">glycemia.service.getCgmEntries:84</code> ; header <code>X-CGM-Recent-Out-Of-Range</code> lu <code class="src">page.tsx:179</code></td>
+        <td>CgmEntry</td>
+        <td>g/L→mg/dL interne, rendu via <code>displayCode</code></td></tr>
+      <tr><td><b>Profil AGP</b></td>
+        <td><code class="src">page.tsx:160</code> <code>fetch("/api/analytics/agp")</code> → <code class="src">analytics/agp/route.ts:16-53</code> → <code class="src">analytics.service.agp:581</code></td>
+        <td>CgmEntry</td><td>percentiles, rendu <code>displayCode</code></td></tr>
+      <tr><td>Préférence d'unité</td>
+        <td><code class="src">useGlucoseUnit.ts:78</code> <code>fetch("/api/account/units")</code> → <code>prisma.userUnitPreferences.findUnique</code></td>
+        <td>UserUnitPreferences</td><td>3/4/5</td></tr>
+    </tbody>
+  </table></div>
+  <p class="lead"><b>À noter :</b> tout le contenu chiffré de la home provient d'<b>une seule table (<code>CgmEntry</code>)</b>. La fenêtre du graphe (24 h) est <b>fixe</b>, indépendante du sélecteur de période (qui ne pilote que les analytics).</p>
+
+  <h3>Actions du patient (« comment un patient fait pour… »)</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Action</th><th>Parcours réel</th><th>Endpoint / handler</th><th>État</th></tr></thead>
+    <tbody>
+      <tr><td>Changer la période</td><td>Clic PeriodSelector → refetch profile + AGP</td><td><code class="src">page.tsx:261</code></td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td>Consulter ses RDV</td><td>Nav « Rendez-vous » → <code>/patient/appointments</code> (scope own-id)</td><td><code class="src">patient/appointments/page.tsx</code></td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td>Voir son insulinothérapie</td><td>Nav → <code>/patient/insulin-therapy</code> (lecture + ses propositions <code>source:["patient"]</code>)</td><td><code class="src">insulin-therapy/page.tsx:109</code></td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td>Changer d'unité glycémie</td><td>Paramètres → <code>PUT /api/account/units</code></td><td><code class="src">account/units/route.ts:49-76</code></td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td>Se déconnecter</td><td>Sidebar / menu → <code>logout()</code></td><td><code class="src">NavigationShell.tsx:482,622</code></td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td><b>Saisir une glycémie</b></td><td>Bouton « Actions rapides » → <code>onAction("logGlucose")</code> → <code>handleQuickAction</code> → toast</td><td><code class="src">page.tsx:226-234</code> <code>setToast(t("comingSoon"))</code></td><td><span class="tag dead">MORT</span></td></tr>
+      <tr><td><b>Ajouter un repas</b> / <b>Calculer un bolus</b> / <b>Exporter un rapport</b></td><td>idem — tous les 4 boutons appellent le même handler</td><td><code class="src">QuickActionsPanel.tsx:5-7,56</code> « no API calls happen here »</td><td><span class="tag dead">MORT</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <h4>États</h4>
+  <p class="lead">Loading par section (skeleton/aria-busy). Erreurs mappées (<code class="src">describeErrorKey page.tsx:90-96</code>) : <code>errorGdprConsent</code> (403), <code>errorForbidden</code>, <code>errorSessionExpired</code> (401), <code>errorServiceUnavailable</code> (≥500), <code>errorNetworkCheck</code>. KPI sans données → « — ». <b>Pas d'empty-state dédié</b> ; contrairement aux pages appointments/insulin-therapy, la home <b>ne redirige pas</b> vers le consentement RGPD.</p>
+
+  <div class="callout c-crit"><span class="sev sev-major">Incohérence P1</span> <b>Les 4 « Actions rapides » ne font RIEN</b> (« Saisir une glycémie », « Ajouter un repas », « Calculer un bolus », « Exporter un rapport ») — toast « Bientôt disponible », aucun endpoint. Or ce sont des fonctions <i>cœur</i> du parcours diabète. <code class="src">page.tsx:234</code></div>
+  <div class="callout c-warn"><span class="sev sev-med">Incohérence P2</span> <b>Bande cible du graphe hardcodée 70–180 mg/dL</b>, non pathology-aware, alors que l'API renvoie <code>targetRangeMgdl</code> adapté (GD 63–140). Un patient diabète gestationnel verrait une cible erronée. <code class="src">page.tsx:347-348</code></div>
+  <div class="callout c-warn"><span class="sev sev-med">Incohérence P3</span> <b>Redirection consentement vers une page inexistante</b> : appointments/insulin-therapy font <code>redirect("/account/privacy")</code> mais <b>seule la route API existe, pas la page</b> (<code>messages/page.tsx:79</code> a même un <code>TODO : créer la page</code>). Cible morte → 404. <code class="src">appointments/page.tsx:81</code></div>
+  <div class="callout c-info"><span class="sev sev-min">Incohérence P4</span> Divergence de défaut d'unité : hook <code>useGlucoseUnit</code> défaut = mg/dL (4) ; API <code>/api/account/units</code> défaut sans préférence = mmol/L (5) → flash d'unité au 1er rendu. Seuils de statut KPI (TIR 70/50, CV 36/45) hardcodés (non issus de <code>clinical-bounds.ts</code>). <code class="src">useGlucoseUnit.ts:72</code> · <code>account/units/route.ts:19</code></div>
+</section>
+
+<!-- ============ MEDECIN ============ -->
+<section id="medecin">
+  <h2 class="sec"><span class="role-badge r-doctor">Médecin — DOCTOR</span> &nbsp;Home <code>/medecin</code> (« Ma journée »)</h2>
+
+  <h3>Identité &amp; accès</h3>
+  <div class="tblwrap"><table><tbody>
+    <tr><th>Route / fichier</th><td><code>/medecin</code> — <code class="src">medecin/page.tsx:42</code> <code>MedecinDashboardPage</code> (Server async)</td></tr>
+    <tr><th>Layout</th><td><code class="src">(dashboard)/layout.tsx:64</code> → <code>&lt;NavigationShell variant="pro"&gt;</code></td></tr>
+    <tr><th>Gating</th><td>Middleware (<code>/medecin/:path*</code>) + layout + page <code>ALLOWED_ROLES = {DOCTOR, NURSE, ADMIN}</code> (<code class="src">page.tsx:40-45</code>). <b>Page partagée 3 rôles.</b></td></tr>
+    <tr><th>Scope données</th><td>DOCTOR = <b>référent</b> (<code>PatientReferent.pro.userId</code>, <code class="src">access-control.ts:172-179</code>) — plus restrictif que le NURSE (service).</td></tr>
+  </tbody></table></div>
+
+  <div class="callout c-info"><b>Clarification <code>/medecin</code> vs <code>/dashboard</code> vs <code>/</code></b> — Ce sont <b>3 pages distinctes</b> : <code>/medecin</code> = triage « Ma journée » (server) ; <code>/dashboard</code> = vue <i>glycémie patient</i> (client, <code class="src">dashboard/page.tsx:227</code>) ; <code>/</code> = redirection par rôle (<code class="src">(dashboard)/page.tsx:16-22</code>). Le médecin n'atteint jamais <code>/dashboard</code> par la nav.</div>
+
+  <h3>Reconstitution de l'écran</h3>
+  <div class="mock"><div class="app">
+    <div class="side">
+      <div class="logo" style="color:var(--teal)">◉ Diabeo</div>
+      <a class="navi act">Ma journée</a>
+      <a class="navi">Patients</a><a class="navi">Rendez-vous</a><a class="navi">Messagerie</a>
+      <a class="navi">Documents</a><a class="navi">Analytics</a><a class="navi">Paramètres</a>
+      <div class="sep">Gestion cabinet (si gestionnaire)</div>
+      <a class="navi muted">Équipe · Facturation · Cabinet</a>
+    </div>
+    <div class="main">
+      <div class="topbar"><div class="title">Ma journée — Bonjour, Dr. …</div><div class="icons">🔍 🔔 👤</div></div>
+      <div style="font-size:11px;color:#6B7280;margin-bottom:8px">3 patients à trier · 1 alerte prioritaire</div>
+      <div class="cardm" style="border-left:4px solid var(--crit)"><div class="h">Urgences en cours <span class="chip crit">1</span></div>
+        <div class="rowm"><span>Dupont · DT1 · <b>0,42 g/L</b> <span class="chip crit">Hypo sévère</span></span><span class="btnm">Ouvrir</span></div>
+      </div>
+      <div class="grid2">
+        <div class="cardm"><div class="h">Propositions en attente <span class="chip">2</span></div><div class="rowm"><span>Martin · ISF matin</span><span class="btnm ghost">Revoir</span></div></div>
+        <div class="cardm"><div class="h">À revoir en consultation</div><div class="rowm"><span>Somogyi nocturne</span><span class="btnm ghost">Revoir</span></div></div>
+        <div class="cardm"><div class="h">Rendez-vous du jour</div><div class="rowm"><span>14:30 · Bernard</span><span class="btnm ghost">Préparer</span></div></div>
+        <div class="cardm"><div class="h">Relances en attente</div><div class="rowm"><span>14 j sans saisie</span><span class="chip">tel / sms</span></div></div>
+      </div>
+      <div class="cardm"><div class="h">Patients à suivre</div><div class="rowm"><span>≥ 3 hypos / 7 j</span><span class="btnm ghost">Ouvrir</span></div></div>
+      <div class="grid4" style="margin-top:10px">
+        <div class="kpi"><div class="lab">Patients actifs</div><div class="val">128</div></div>
+        <div class="kpi"><div class="lab">TIR moyen (14 j)</div><div class="val">68<small>%</small></div></div>
+        <div class="kpi"><div class="lab">Urgences (7 j)</div><div class="val">4</div></div>
+        <div class="kpi"><div class="lab">Propositions pending</div><div class="val">6</div></div>
+      </div>
+    </div>
+  </div></div>
+  <div class="mock-cap">Reconstitution fidèle (structure des cartes issue de <code>medecin/page.tsx:78-99</code> — valeurs illustratives).</div>
+
+  <h3>Cartes affichées &amp; source de donnée</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Carte (libellé FR)</th><th>Endpoint (polling)</th><th>Service → requête</th><th>Table</th></tr></thead>
+    <tbody>
+      <tr><td>Sous-titre triage</td><td>SSR (pas de fetch)</td><td><code class="src">doctor-dashboard.service.ts:313</code> <code>triageSummaryQuery</code></td><td>EmergencyAlert</td></tr>
+      <tr><td><b>Urgences en cours</b></td><td><code>/api/dashboard/medecin/urgencies</code> (30 s)</td><td><code class="src">:132</code> <code>urgenciesQuery</code> + TIR 14 j</td><td>EmergencyAlert + CgmEntry</td></tr>
+      <tr><td><b>Propositions en attente</b></td><td><code>…/pending-proposals</code> (60 s)</td><td><code class="src">:881</code> <code>pendingProposalsQuery</code></td><td>AdjustmentProposal</td></tr>
+      <tr><td><b>À revoir en consultation</b></td><td><code>…/review-flags</code> (60 s)</td><td><code class="src">:969</code> <code>reviewFlagsQuery</code></td><td>ClinicalReviewFlag</td></tr>
+      <tr><td><b>Rendez-vous du jour</b></td><td><code>…/appointments</code> (5 min)</td><td><code class="src">:363</code> <code>appointmentsQuery</code></td><td>Appointment</td></tr>
+      <tr><td><b>Relances</b> (réutilise infirmier)</td><td><code>/api/dashboard/infirmier/recall-list</code> (2 min)</td><td><code>nurse-dashboard.service</code> (heuristique)</td><td>CgmEntry + Appointment</td></tr>
+      <tr><td><b>Messages non lus</b></td><td><code>…/unread-threads</code> (60 s)</td><td><code class="src">:1039</code> → <code>messagingService.listThreads</code></td><td>Message/threads</td></tr>
+      <tr><td><b>Patients à suivre</b></td><td><code>…/patients-at-risk</code> (5 min) <span class="tag partial">DOCTOR-only</span></td><td><code class="src">:465</code> hypos 7 j ≥ 3, silence ≥ 5 j</td><td>EmergencyAlert + CgmEntry</td></tr>
+      <tr><td><b>KPI cabinet</b> (14 j)</td><td><code>…/kpi</code> (10 min) <span class="tag partial">DOCTOR-only</span></td><td><code class="src">:720</code> 8 requêtes parallèles</td><td>CgmEntry + EmergencyAlert + AdjustmentProposal</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Actions du médecin (câblé vs mort)</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Action</th><th>Cible</th><th>État</th></tr></thead>
+    <tbody>
+      <tr><td>Urgence/RDV/Patient → « Ouvrir »/« Préparer »</td><td><code>/patients/{id}</code></td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td>Proposition/Flag → « Revoir »</td><td><code>/patients/{id}/review</code></td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td>« Agenda » / « Tout voir » / « Lire »</td><td><code>/appointments</code> · <code>/patients</code> · <code>/messages</code></td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td>Relance → « Appeler » / « SMS »</td><td>URI natif <code>tel:</code>/<code>sms:</code></td><td><span class="tag partial">partiel — aucun log/audit</span></td></tr>
+      <tr><td><b>KPI cabinet</b> → drill-down</td><td>Aucun <code>onClick</code>/href (malgré le commentaire service « drives drill-down »)</td><td><span class="tag dead">non câblé</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="callout c-crit" id="inc-dashboard"><span class="sev sev-med">Incohérence D1</span> <b>Doublon de home patient atteignable par un pro</b> : <code>/dashboard</code> (vue glycémie <i>patient</i>, sans gating de rôle) n'est lié nulle part dans la nav mais est atteint via <code class="src">events/new/page.tsx:492</code> <code>router.push("/dashboard")</code>. Un DOCTOR y arrivant verrait une vue patient scopée à lui-même.</div>
+  <div class="callout c-warn"><span class="sev sev-med">Incohérence D2</span> <b>Incohérence d'unité entre 2 cartes de la même home</b> : <code>EmergencyCard</code> affiche <code>mg/dL</code>/<code>mmol/L</code> <b>en dur</b> (<code class="src">EmergencyCard.tsx:114-117</code>) sans appliquer <code>useGlucoseUnit</code>, alors que <code>PendingProposalsCard</code> respecte la préférence (<code class="src">doctor-dashboard.service.ts:872</code>).</div>
+  <div class="callout c-warn"><span class="sev sev-med">Incohérence D3</span> <b>KPI drill-down annoncé mais non câblé</b> (<code class="src">KpiSection.tsx:52</code>) · <b>Relances <code>tel:</code>/<code>sms:</code> sans <code>PatientRecallLog</code></b> → trou de traçabilité HDS (<code class="src">RecallListCard.tsx:6-7</code>).</div>
+  <div class="callout c-info"><span class="sev sev-min">Incohérence D4</span> Un <b>NURSE</b> affichant cette home (autorisé) reçoit <b>403</b> sur <code>patients-at-risk</code> + <code>kpi</code> (DOCTOR-only) → 2 cartes en erreur. <code>RiskReason.tirDrop</code> prévu côté carte mais jamais émis (<code class="src">doctor-dashboard.service.ts:439</code>).</div>
+</section>
+
+<!-- ============ INFIRMIER ============ -->
+<section id="infirmier">
+  <h2 class="sec"><span class="role-badge r-nurse">Infirmier — NURSE</span> &nbsp;Home <code>/infirmier</code></h2>
+
+  <h3>Identité &amp; accès</h3>
+  <div class="tblwrap"><table><tbody>
+    <tr><th>Route / fichier</th><td><code>/infirmier</code> — <code class="src">infirmier/page.tsx:22</code> <code>InfirmierDashboardPage</code> (Server, composant <b>dédié</b>, pas un ré-export du médecin)</td></tr>
+    <tr><th>Gating</th><td><code>ALLOWED_ROLES = {NURSE, DOCTOR, ADMIN}</code> (<code class="src">page.tsx:20,25</code>) — DOCTOR/ADMIN peuvent afficher en assistance.</td></tr>
+    <tr><th>Scope données</th><td>NURSE = <b>périmètre SERVICE</b> (<code>PatientService → HealthcareService.members</code>, <code class="src">access-control.ts:182-194</code>) — <b>plus large</b> que le DOCTOR (référent). À service égal, un NURSE voit les patients de tous les médecins du service.</td></tr>
+  </tbody></table></div>
+
+  <h3>Reconstitution de l'écran</h3>
+  <div class="mock"><div class="app">
+    <div class="side">
+      <div class="logo" style="color:var(--indigo)">◉ Diabeo</div>
+      <a class="navi act" style="background:#eef2ff;color:#4338ca">Tableau de bord</a>
+      <a class="navi">Patients</a><a class="navi">Rendez-vous</a><a class="navi">Messagerie</a>
+      <a class="navi">Documents</a><a class="navi">Analytics</a><a class="navi">Paramètres</a>
+    </div>
+    <div class="main">
+      <div class="topbar"><div class="title">Tableau de bord infirmier — Bonjour, …</div><div class="icons">🔍 🔔 👤</div></div>
+      <div class="grid4">
+        <div class="kpi"><div class="lab">Rendez-vous à préparer</div><div class="val">5</div></div>
+        <div class="kpi"><div class="lab">Événements à valider</div><div class="val">3</div></div>
+        <div class="kpi"><div class="lab">Urgences observées</div><div class="val">2</div></div>
+        <div class="kpi" style="border-color:#fca5a5"><div class="lab">Propositions à connaître</div><div class="val" style="color:#991b1b">0 ⚠</div></div>
+      </div>
+      <div class="grid2">
+        <div class="cardm"><div class="h">To-do du jour <span class="chip">lecture seule</span></div>
+          <div class="rowm"><span><span class="chip crit">Rendez-vous</span> Préparer le dossier — RDV 14:30</span></div>
+          <div class="rowm"><span><span class="chip warn">Saisie</span> Valider la mesure saisie</span></div>
+        </div>
+        <div class="cardm"><div class="h">Coordination équipe</div><div class="rowm"><span><span class="chip">Entrante</span> Délégation · Dupont</span></div></div>
+      </div>
+      <div class="cardm"><div class="h">Relances en attente</div><div class="rowm"><span>Aucune saisie enregistrée</span><span class="chip">tel / sms</span></div></div>
+    </div>
+  </div></div>
+  <div class="mock-cap">Reconstitution fidèle (structure <code>infirmier/page.tsx:29-42</code>). Le KPI « Propositions à connaître » est marqué ⚠ (compte toujours 0 — voir N1).</div>
+
+  <h3>Cartes affichées &amp; source de donnée</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Carte (libellé FR)</th><th>Endpoint (polling)</th><th>Source</th><th>Table</th></tr></thead>
+    <tbody>
+      <tr><td>KPI « Ma journée » (4 compteurs)</td><td><code>/api/dashboard/infirmier/kpi</code> (60 s)</td><td><code class="src">nurse-dashboard.service.ts:100-125</code></td><td>Appointment · DiabetesEvent · EmergencyAlert · AdjustmentProposal</td></tr>
+      <tr><td><b>To-do du jour</b> (lecture seule)</td><td><code>…/todo</code> (60 s)</td><td><code class="src">:195-289</code> fusion 3 sources on-demand</td><td>Appointment · DiabetesEvent · AdjustmentProposal</td></tr>
+      <tr><td><b>Coordination équipe</b></td><td><code>…/team-inbox</code> (60 s)</td><td><code class="src">:338-359</code></td><td>DelegationRequest</td></tr>
+      <tr><td><b>Relances en attente</b></td><td><code>…/recall-list</code> (2 min)</td><td><code class="src">:410-567</code> heuristique (silence 7 j, RDV non confirmé 3 j)</td><td>CgmEntry · Appointment</td></tr>
+    </tbody>
+  </table></div>
+  <p class="lead"><b>Unité glycémie : non applicable</b> — la home infirmier n'affiche <b>aucune valeur de glycémie</b> (uniquement des compteurs et des libellés de délai). Prénoms/téléphones déchiffrés (AES-256-GCM) à l'affichage.</p>
+
+  <h3>Actions infirmier (frontière clinique)</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Action</th><th>Endpoint</th><th>RBAC réel</th><th>État</th></tr></thead>
+    <tbody>
+      <tr><td>Consulter un dossier (depuis Todo)</td><td><code>/patients/{id}</code></td><td>scope service</td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td>Créer une <b>glycémie pro</b></td><td><code>POST /api/patients/[id]/glycemia</code></td><td><code>requireRole("NURSE")</code> ✔ (<code class="src">glycemia/route.ts:167</code>)</td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td>Proposer une <b>config insuline groupée</b></td><td><code>POST /api/slot-set-proposals</code></td><td><code>source="nurse"</code>, crée <code>SlotSetProposal</code> pending (revue médecin)</td><td><span class="tag ok">câblé</span></td></tr>
+      <tr><td>Écrire une InsulinConfig <b>en direct</b></td><td><code>PUT /api/insulin-therapy/settings</code></td><td><code>requireRole("DOCTOR")</code> → <b>NURSE = 403</b> (<code class="src">settings/route.ts:42-46</code>)</td><td><span class="tag dead">interdit au NURSE</span></td></tr>
+      <tr><td>Relance « Appeler »/« SMS »</td><td>URI natif <code>tel:</code>/<code>sms:</code></td><td>—</td><td><span class="tag partial">partiel — aucun log</span></td></tr>
+      <tr><td>Approuver/rejeter une délégation</td><td>—</td><td>non exposé sur la home (affichage seul)</td><td><span class="tag dead">non exposé</span></td></tr>
+    </tbody>
+  </table></div>
+
+  <div class="callout c-crit"><span class="sev sev-major">Incohérence N1 (majeure)</span> <b>Le KPI « Propositions à connaître » et la todo « observer une proposition » comptent une table qui ne reçoit plus d'écritures.</b> Ils interrogent <code>AdjustmentProposal status=pending</code> (<code class="src">nurse-dashboard.service.ts:120-125, 216-224</code>), or depuis l'ADR #31 le moteur émet des <code>SlotSetProposal</code> et <b><code>adjustmentProposal.create</code> a 0 occurrence dans <code>src/</code></b> (vérifié). Ces indicateurs <b>affichent donc toujours 0</b> (ou des reliquats legacy) et ne reflètent jamais les vraies propositions en attente.</div>
+  <div class="callout c-crit"><span class="sev sev-med">Incohérence N2 (doc↔code)</span> <b>Contradiction RBAC</b> : <code>CLAUDE.md</code> / <code>TEAM.md</code> affirment « NURSE : création InsulinConfig <i>sans validation</i> », mais le code réserve l'écriture directe au DOCTOR (<code class="src">settings/route.ts:42-46</code>) ; le NURSE ne peut que <b>proposer</b> en groupé. Documentation de rôle <b>obsolète</b> vs ADR #26/#28/#31.</div>
+  <div class="callout c-warn"><span class="sev sev-med">Incohérence N3 (i18n)</span> <b>Libellés visibles hardcodés en français</b> — les 4 titres KPI (<code class="src">NurseKpiSection.tsx:17-22</code>) et les labels métier générés serveur (Todo/Relances, <code class="src">nurse-dashboard.service.ts:257-258,481</code>) ne passent pas par <code>next-intl</code> → cassés en EN/AR (viole la règle i18n).</div>
+  <div class="callout c-info"><span class="sev sev-min">Incohérence N4</span> Fonctionnalités annoncées non livrées : « To-do » suggère des tâches cochables mais est <b>lecture seule</b> ; « Coordination équipe » = inbox sans chat (tables <code>NurseTaskItem</code>/<code>TeamMessage</code> différées). Relances sans <code>PatientRecallLog</code>.</div>
+</section>
+
+<!-- ============ ADMIN ============ -->
+<section id="admin">
+  <h2 class="sec"><span class="role-badge r-admin">Administrateur — ADMIN</span> &nbsp;Home <code>/admin</code></h2>
+
+  <h3>Identité &amp; accès</h3>
+  <div class="tblwrap"><table><tbody>
+    <tr><th>Route / fichier</th><td><code>/admin</code> — <code class="src">admin/page.tsx:18</code> (Server)</td></tr>
+    <tr><th>Gating</th><td>Middleware injecte le rôle <b>sans l'enforcer</b> ; page <code>redirect("/")</code> si ≠ ADMIN (<code class="src">:27</code>) ; autorisation réelle = routes API <code>auditedRequireRole(ADMIN)</code>. <b>Aucun step-up MFA</b> sur la home ni les sous-pages admin (vérifié).</td></tr>
+    <tr><th>Portée</th><td>« Cet espace n'affiche que des indicateurs de gouvernance, de facturation et d'audit — <b>aucune donnée de santé</b> » (bandeau <code class="src">admin/page.tsx:42-48</code>).</td></tr>
+  </tbody></table></div>
+
+  <h3>Reconstitution de l'écran</h3>
+  <div class="mock"><div class="app">
+    <div class="side">
+      <div class="logo" style="color:#334155">◉ Diabeo</div>
+      <a class="navi act" style="background:#f1f5f9;color:#1e293b">Tableau de bord</a>
+      <a class="navi">Patients</a><a class="navi">Rendez-vous</a><a class="navi">Messagerie</a>
+      <a class="navi">Documents</a><a class="navi">Analytics</a><a class="navi">Paramètres</a>
+      <div class="sep">/admin/*, /admin/users, /audit → Ctrl-K seulement</div>
+    </div>
+    <div class="main">
+      <div class="topbar"><div class="title">Tableau de bord administrateur</div><div class="icons">🔍 🔔 👤</div></div>
+      <div style="font-size:10.5px;color:#6B7280;margin-bottom:8px;background:#f1f5f9;padding:5px 8px;border-radius:6px">🛡️ Indicateurs de gouvernance / facturation / audit — aucune donnée de santé.</div>
+      <div class="grid4">
+        <div class="kpi"><div class="lab">Cabinets</div><div class="val">12</div></div>
+        <div class="kpi"><div class="lab">Membres équipe</div><div class="val">47</div></div>
+        <div class="kpi"><div class="lab">Patients actifs (14 j)</div><div class="val">128</div></div>
+        <div class="kpi"><div class="lab">Événements audit (7 j)</div><div class="val">3 204</div></div>
+      </div>
+      <div class="grid2">
+        <div class="cardm"><div class="h">Facturation à traiter <span class="chip warn">heuristique</span></div><div class="rowm"><span>Non facturés</span><span>18</span></div></div>
+        <div class="cardm"><div class="h">Conformité HDS</div><div class="rowm"><span>Dernier backup</span><span class="chip ok">il y a 6 h</span></div><div class="rowm"><span>Backups échec (30 j)</span><span>0</span></div></div>
+      </div>
+      <div class="cardm" style="text-align:center"><a class="btnm">Administration plateforme →</a></div>
+    </div>
+  </div></div>
+  <div class="mock-cap">Reconstitution fidèle (KPI + cartes <code>admin/page.tsx</code>). « heuristique » = la facturation est un proxy (table <code>Invoice</code> non créée).</div>
+
+  <h3>Informations affichées &amp; source de donnée</h3>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Info (libellé FR)</th><th>Source</th><th>Table</th></tr></thead>
+    <tbody>
+      <tr><td>KPI <b>Cabinets</b></td><td><code>/api/dashboard/admin/kpi</code> → <code class="src">admin-dashboard.service.ts:66</code> <code>healthcareService.count()</code></td><td>HealthcareService</td></tr>
+      <tr><td>KPI <b>Membres équipe</b></td><td><code class="src">:71-78</code> user actifs → healthcareMember.count</td><td>User + HealthcareMember</td></tr>
+      <tr><td>KPI <b>Patients actifs (14 j)</b></td><td><code class="src">:82-88</code> <code>$queryRaw COUNT(DISTINCT patient_id)</code></td><td>cgm_entries + patients</td></tr>
+      <tr><td>KPI <b>Événements audit (7 j)</b></td><td><code class="src">:89-91</code> <code>auditLog.count</code></td><td>AuditLog</td></tr>
+      <tr><td><b>Facturation</b> à traiter</td><td><code>…/billing</code> → <code class="src">:132-164</code> heuristique</td><td>Appointment + TeleconsultationActe</td></tr>
+      <tr><td><b>Conformité HDS</b> (backup, audit 24 h, échecs)</td><td><code>…/compliance</code> → <code class="src">:209-225</code></td><td>BackupLog + AuditLog</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>Navigation vers la gestion (hub plateforme)</h3>
+  <p class="lead">La home ne contient qu'<b>un lien</b> → <code>/admin/platform</code> (hub, 6 cartes : Organisations, Établissements, 1ᵉʳ admin, Politique de vérification, Vérification PS, Personnel — toutes existantes). Les vraies actions de gestion (créer organisation, valider PS, data-breach FSM, backups…) vivent dans ces sous-pages.</p>
+
+  <div class="callout c-crit"><span class="sev sev-med">Incohérence A1</span> <b>5 pages admin orphelines</b> (existent, ADMIN-guardées, mais aucun point d'entrée depuis home/sidebar/palette/hub) : <code>/admin/system-health</code>, <code>/admin/backups</code>, <code>/admin/tax-rules</code>, <code>/admin/invoices</code>, <code>/admin/data-breaches</code>. Accessibles seulement par URL directe.</div>
+  <div class="callout c-warn"><span class="sev sev-med">Incohérence A2</span> <b><code>/admin/users</code> et <code>/audit</code> absents de la sidebar</b> — joignables uniquement via <b>Ctrl-K</b>. Un admin ne connaissant pas le raccourci ne voit aucune entrée « Utilisateurs »/« Audit » à l'écran.</div>
+  <div class="callout c-info"><span class="sev sev-min">Incohérence A3</span> Note RGPD de la carte Conformité = <b>placeholder</b> (« US-2413 à venir V3 », <code class="src">ComplianceCard.tsx:107</code>). KPI Facturation = <b>heuristique proxy</b> (table <code>Invoice</code> non créée) → risque de divergence avec <code>/admin/invoices</code>. Gating home purement UX.</div>
+</section>
+
+<!-- ============ INCOHERENCES ============ -->
+<section id="incoherences">
+  <h2 class="sec">⚠️ Incohérences — synthèse transverse</h2>
+  <p class="lead">Consolidation dédupliquée de toutes les incohérences détectées, triées par sévérité. Chaque item est sourcé.</p>
+  <div class="legend">
+    <span><span class="dot" style="background:var(--crit)"></span> Majeure (fonctionnel / clinique / sécurité)</span>
+    <span><span class="dot" style="background:var(--warn)"></span> Moyenne</span>
+    <span><span class="dot" style="background:#cbd5e1"></span> Mineure / dette</span>
+  </div>
+  <div class="tblwrap"><table>
+    <thead><tr><th>#</th><th>Sév.</th><th>Incohérence</th><th>Preuve</th><th>Rôle(s)</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td><span class="sev sev-major">MAJ</span></td><td><b>KPI/Todo infirmier « Propositions » comptent une table sans écritures</b> (<code>AdjustmentProposal</code> vs <code>SlotSetProposal</code>, ADR #31) → affichent toujours 0.</td><td><code class="src">nurse-dashboard.service.ts:120-125,216-224</code> ; <code>adjustmentProposal.create</code> = 0 occurrence</td><td>Infirmier</td></tr>
+      <tr><td>2</td><td><span class="sev sev-major">MAJ</span></td><td><b>4 « Actions rapides » patient inertes</b> (saisie glycémie, repas, bolus, export) → toast « Bientôt disponible ».</td><td><code class="src">page.tsx:234</code>, <code>QuickActionsPanel.tsx:5-7</code></td><td>Patient</td></tr>
+      <tr><td>3</td><td><span class="sev sev-med">MOY</span></td><td><b>Redirection consentement vers page inexistante</b> <code>/account/privacy</code> (seule l'API existe ; <code>TODO</code> explicite).</td><td><code class="src">appointments/page.tsx:81</code>, <code>messages/page.tsx:79</code></td><td>Patient / pro</td></tr>
+      <tr><td>4</td><td><span class="sev sev-med">MOY</span></td><td><b>Bande cible graphe patient hardcodée 70–180</b>, non pathology-aware (cible GD ignorée).</td><td><code class="src">patient/dashboard/page.tsx:347-348</code></td><td>Patient</td></tr>
+      <tr><td>5</td><td><span class="sev sev-med">MOY</span></td><td><b>EmergencyCard n'applique pas la préférence d'unité</b> (mg/dL/mmol/L en dur) — incohérent avec PendingProposalsCard.</td><td><code class="src">EmergencyCard.tsx:114-117</code></td><td>Médecin</td></tr>
+      <tr><td>6</td><td><span class="sev sev-med">MOY</span></td><td><b>Contradiction RBAC doc↔code</b> : CLAUDE.md « NURSE crée InsulinConfig sans validation » ≠ code (DOCTOR only).</td><td><code class="src">settings/route.ts:42-46</code></td><td>Infirmier</td></tr>
+      <tr><td>7</td><td><span class="sev sev-med">MOY</span></td><td><b><code>/dashboard</code> = vue patient sans gating de rôle</b>, atteignable par un pro via <code>events/new</code>.</td><td><code class="src">events/new/page.tsx:492</code> ; <code>dashboard/page.tsx</code> (no guard)</td><td>Transverse</td></tr>
+      <tr><td>8</td><td><span class="sev sev-med">MOY</span></td><td><b>5 pages admin orphelines</b> (system-health, backups, tax-rules, invoices, data-breaches) sans point d'entrée.</td><td>grep href entrant = néant</td><td>Admin</td></tr>
+      <tr><td>9</td><td><span class="sev sev-med">MOY</span></td><td><b>Relances <code>tel:</code>/<code>sms:</code> sans <code>PatientRecallLog</code></b> → trou d'auditabilité HDS d'un geste soignant.</td><td><code class="src">RecallListCard.tsx:6-8,100-115</code></td><td>Médecin / Infirmier</td></tr>
+      <tr><td>10</td><td><span class="sev sev-med">MOY</span></td><td><b>Libellés visibles hardcodés (i18n manquant)</b> : KPI infirmier + labels métier serveur → cassés EN/AR.</td><td><code class="src">NurseKpiSection.tsx:17-22</code>, <code>nurse-dashboard.service.ts:257,481</code></td><td>Infirmier</td></tr>
+      <tr><td>11</td><td><span class="sev sev-min">MIN</span></td><td><b>Cloche Notifications sans handler</b> (décorative) sur toutes les homes.</td><td><code class="src">NavigationShell.tsx:580-585</code></td><td>Transverse</td></tr>
+      <tr><td>12</td><td><span class="sev sev-min">MIN</span></td><td><b>Drill-down KPI médecin non câblé</b> (annoncé par le service, aucun <code>onClick</code>).</td><td><code class="src">KpiSection.tsx:52</code></td><td>Médecin</td></tr>
+      <tr><td>13</td><td><span class="sev sev-min">MIN</span></td><td><b>NURSE reçoit 403</b> sur 2 cartes DOCTOR-only de la home médecin partagée.</td><td><code class="src">medecin/page.tsx:40</code> vs API <code>DOCTOR</code></td><td>Médecin/Infirmier</td></tr>
+      <tr><td>14</td><td><span class="sev sev-min">MIN</span></td><td><b>Menu profil : 2 items → même URL</b> <code>/settings</code> ; <code>/settings</code> hors du shell (perte sidebar).</td><td><code class="src">NavigationShell.tsx:609,615</code></td><td>Transverse</td></tr>
+      <tr><td>15</td><td><span class="sev sev-min">MIN</span></td><td><b>Divergence défaut d'unité</b> hook (mg/dL) vs API (mmol/L) ; seuils KPI patient hardcodés.</td><td><code class="src">useGlucoseUnit.ts:72</code></td><td>Patient</td></tr>
+      <tr><td>16</td><td><span class="sev sev-min">MIN</span></td><td><b>Placeholders / données non alimentées</b> : note RGPD Conformité, KPI facturation heuristique, <code>RiskReason.tirDrop</code>, Todo/inbox non actionnables.</td><td><code class="src">ComplianceCard.tsx:107</code> ; <code>admin-dashboard.service.ts:132</code></td><td>Admin/Médecin/Infirmier</td></tr>
+      <tr><td>17</td><td><span class="sev sev-min">MIN</span></td><td><b>Violations design system</b> (Tailwind brut) : <code>QuickActionsPanel</code> (<code>bg-teal-50…</code>), <code>patient/appointments</code> (<code>amber-*</code>).</td><td><code class="src">QuickActionsPanel.tsx:57-62</code></td><td>Patient</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ============ TABLES ============ -->
+<section id="tables">
+  <h2 class="sec">Récapitulatif — tables Prisma alimentant chaque home</h2>
+  <div class="tblwrap"><table>
+    <thead><tr><th>Home</th><th>Tables réellement lues</th><th>Écritures possibles depuis la home</th></tr></thead>
+    <tbody>
+      <tr><td><span class="role-badge r-patient">Patient</span></td><td>CgmEntry (KPI + graphe + AGP), UserUnitPreferences (unité)</td><td><b>Aucune</b> (période, déconnexion, navigation seulement)</td></tr>
+      <tr><td><span class="role-badge r-doctor">Médecin</span></td><td>EmergencyAlert, CgmEntry, AdjustmentProposal, ClinicalReviewFlag, Appointment, Message/threads, UserUnitPreferences, Patient/User (déchiffrés)</td><td>Aucune écriture directe (navigation vers <code>/patients/{id}/review</code> pour agir)</td></tr>
+      <tr><td><span class="role-badge r-nurse">Infirmier</span></td><td>Appointment, DiabetesEvent, EmergencyAlert, AdjustmentProposal <span class="tag dead">sans écritures</span>, DelegationRequest, CgmEntry</td><td>Aucune depuis la home (actions via dossiers patients)</td></tr>
+      <tr><td><span class="role-badge r-admin">Admin</span></td><td>HealthcareService, User, HealthcareMember, cgm_entries (count), AuditLog, Appointment, TeleconsultationActe, BackupLog</td><td>Aucune (lien vers hub plateforme)</td></tr>
+    </tbody>
+  </table></div>
+  <p class="lead"><b>Constat transverse :</b> les 4 homes sont <b>en lecture seule</b> — aucune écriture métier ne part directement d'une home ; toutes les actions d'écriture passent par des pages dédiées (dossier patient, revue, paramètres). Toutes les lectures de PHI sont scopées (<code>getAccessiblePatientIds</code> / <code>getOwnPatientId</code>) et auditées.</p>
+</section>
+
+<p class="foot">Document généré le 2026-07-15 par traçage direct du code (Diabeo Backoffice). Reconstitutions d'écran : structure et libellés issus du code, valeurs illustratives. Toute référence <code>fichier:ligne</code> renvoie au dépôt à cette date.</p>
+</main>
+</div>
+</body>
+</html>
