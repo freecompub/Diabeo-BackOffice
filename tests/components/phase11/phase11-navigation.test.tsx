@@ -22,7 +22,7 @@ import { usePathname } from "next/navigation"
 // --- Mocks (must be before component import) ---
 
 vi.mock("next/navigation", () => ({
-  usePathname: vi.fn(() => "/dashboard"),
+  usePathname: vi.fn(() => "/medecin"),
   useRouter: vi.fn(() => ({ push: vi.fn() })),
 }))
 
@@ -127,7 +127,7 @@ function getUniqueNavHrefs(container: HTMLElement): string[] {
 
 describe("NavigationShell", () => {
   beforeEach(() => {
-    vi.mocked(usePathname).mockReturnValue("/dashboard")
+    vi.mocked(usePathname).mockReturnValue("/medecin")
   })
 
   // US-2600 — Sidebar maigre : destinations seulement (Ma journée · Patients ·
@@ -215,7 +215,7 @@ describe("NavigationShell", () => {
     })
 
     it("does not mark non-active pages with aria-current", () => {
-      vi.mocked(usePathname).mockReturnValue("/dashboard")
+      vi.mocked(usePathname).mockReturnValue("/medecin")
       const { container } = render(
         <NavigationShell pageTitle="Dashboard" userRole="VIEWER">
           <div>content</div>
