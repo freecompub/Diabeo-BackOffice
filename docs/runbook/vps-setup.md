@@ -73,6 +73,15 @@ PGPASSWORD='<MOT_DE_PASSE_FORT>' psql -h 127.0.0.1 -U diabeo -d diabeo -c '\dx'
 #   → doit lister pg_trgm, pgcrypto, btree_gist
 ```
 
+> **Mot de passe du rôle (`<MOT_DE_PASSE_FORT>`)** : c'est un secret **machine**
+> (jamais tapé à la main) → **long et aléatoire**, jamais « humain ». Comme il entre
+> dans le `DATABASE_URL`, utiliser un charset **URL-safe** : générer en **hexadécimal**
+> (`openssl rand -hex 24` = 48 car., que des `0-9a-f`) évite d'avoir à URL-encoder des
+> caractères spéciaux (`@ : / + = …`). Coller **la même valeur** dans `CREATE ROLE …
+> PASSWORD` et dans le `DATABASE_URL`. Un mot de passe **différent par environnement**
+> (recette ≠ prod). Ne PAS utiliser `openssl rand -base64` ici (`+ / =` → à encoder).
+> *(OVH DBaaS génère ce mot de passe + le `DATABASE_URL` pour toi.)*
+
 > **Authentification (piège classique)** : l'app se connecte en **TCP** (le
 > `DATABASE_URL` porte un `host`). L'install PGDG configure par défaut
 > `host all all 127.0.0.1/32 scram-sha-256` dans `pg_hba.conf` → l'étape 4
