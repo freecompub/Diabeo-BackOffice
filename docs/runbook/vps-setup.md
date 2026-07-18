@@ -24,19 +24,63 @@ sudo apt update && sudo apt install -y nginx postgresql-client git
 corepack enable && corepack prepare pnpm@10 --activate   # Node 22 requis
 ```
 
-## 3. PostgreSQL 16 — rôle + extensions
+## 3. PostgreSQL 16 — création de la base, du rôle & des extensions
 
-Les migrations créent `pg_trgm` + `pgcrypto` (baseline) ; l'extension `btree_gist`
-est requise (contrainte anti-chevauchement RDV). Si le rôle applicatif n'a pas
-`CREATE EXTENSION`, les pré-créer en superuser :
+Objectif : disposer d'une **base `diabeo`** + d'un **rôle** (compte user/mot de passe)
+que l'app utilise pour se connecter, avec **3 extensions** activées. Deux cas selon
+que Postgres tourne **sur le VPS** ou est une **base managée OVH (DBaaS)**.
 
-```sql
+> **Rôle** = compte de connexion (login + mot de passe). **Extensions** = plugins
+> Postgres requis : `pg_trgm` (recherche floue patient), `pgcrypto` (chiffrement
+> at-rest, ADR #8), `btree_gist` (contrainte anti-chevauchement des créneaux RDV).
+
+### 3.A — Postgres installé sur le VPS
+
+```bash
+# 1. Installer PostgreSQL 16
+sudo apt install -y postgresql-16
+
+# 2. Créer le rôle applicatif (NON superutilisateur — moindre privilège) + la base
+sudo -u postgres psql <<'SQL'
+CREATE ROLE diabeo LOGIN PASSWORD '<MOT_DE_PASSE_FORT>';
+CREATE DATABASE diabeo OWNER diabeo;
+SQL
+
+# 3. Activer les extensions EN SUPERUTILISATEUR (l'app n'a pas ce droit) — voir note
+sudo -u postgres psql -d diabeo <<'SQL'
 CREATE EXTENSION IF NOT EXISTS pg_trgm;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS btree_gist;
+SQL
+
+# 4. Vérifier la connexion avec le rôle applicatif
+PGPASSWORD='<MOT_DE_PASSE_FORT>' psql -h 127.0.0.1 -U diabeo -d diabeo -c '\dx'
+#   → doit lister pg_trgm, pgcrypto, btree_gist
 ```
 
-`DATABASE_URL` : `postgresql://<user>:<pwd>@<host>:5432/diabeo?schema=public`.
+> **Pourquoi l'étape 3 en superutilisateur ?** `prisma migrate deploy` tente
+> `CREATE EXTENSION IF NOT EXISTS …`, mais créer une extension exige les droits
+> **superuser** — que le rôle `diabeo` n'a volontairement pas. En les créant
+> d'abord en `postgres`, la migration les trouve déjà présentes et passe sans erreur.
+
+### 3.B — Base managée OVH (DBaaS)
+
+1. Créer une instance **PostgreSQL 16** + une base `diabeo` depuis l'Espace client OVH.
+2. Récupérer les identifiants → construire le `DATABASE_URL` fourni.
+3. **Extensions** : OVH DBaaS pré-installe `pg_trgm`/`pgcrypto`/`btree_gist`. Si le
+   rôle fourni n'a pas `CREATE EXTENSION`, les activer depuis l'interface OVH (ou
+   avec un rôle admin) — mêmes 3 `CREATE EXTENSION IF NOT EXISTS` qu'en 3.A étape 3.
+
+### `DATABASE_URL` (à mettre dans l'env, §4)
+
+```
+postgresql://<user>:<pwd>@<host>:5432/diabeo?schema=public
+             └user┘ └pwd┘ └host┘ └port┘ └base┘ └ schéma ┘
+```
+
+- `user`/`pwd` : le rôle créé (`diabeo` + son mot de passe)
+- `host` : `127.0.0.1` si Postgres sur le même VPS, sinon l'adresse OVH
+- `5432` : port PostgreSQL par défaut · `diabeo` : nom de la base · `schema=public`
 
 ## 4. Variables d'environnement — `/etc/diabeo/<env>.env`
 
