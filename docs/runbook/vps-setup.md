@@ -38,7 +38,17 @@ que Postgres tourne **sur le VPS** ou est une **base managée OVH (DBaaS)**.
 
 ```bash
 # 1. Installer PostgreSQL 16
+#    ⚠️ postgresql-16 n'est PAS dans les dépôts APT par défaut (Ubuntu 22.04 → PG 14,
+#    Debian 12 → PG 15). Ajouter d'abord le dépôt officiel PostgreSQL (PGDG) :
+sudo apt update && sudo apt install -y curl ca-certificates gnupg lsb-release
+sudo install -d /usr/share/postgresql-common/pgdg
+sudo curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+  -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc
+echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+  | sudo tee /etc/apt/sources.list.d/pgdg.list
+sudo apt update
 sudo apt install -y postgresql-16
+# (Alternative : base managée OVH DBaaS = aucune install, cf. 3.B.)
 
 # 2. Créer le rôle applicatif (NON superutilisateur — moindre privilège) + la base
 sudo -u postgres psql <<'SQL'
