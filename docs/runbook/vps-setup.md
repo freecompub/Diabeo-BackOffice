@@ -48,7 +48,12 @@ echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] h
   | sudo tee /etc/apt/sources.list.d/pgdg.list
 sudo apt update
 sudo apt install -y postgresql-16
-# (Alternative : base managée OVH DBaaS = aucune install, cf. 3.B.)
+# (Alternative sans install APT : conteneur `postgres:16-alpine`, ou base managée
+#  OVH DBaaS = aucune install, cf. 3.B.)
+
+# 1b. Vérifier l'install
+psql --version                                   # → 16.x
+sudo systemctl status postgresql --no-pager      # → active (running), démarre au boot
 
 # 2. Créer le rôle applicatif (NON superutilisateur — moindre privilège) + la base
 sudo -u postgres psql <<'SQL'
@@ -67,6 +72,15 @@ SQL
 PGPASSWORD='<MOT_DE_PASSE_FORT>' psql -h 127.0.0.1 -U diabeo -d diabeo -c '\dx'
 #   → doit lister pg_trgm, pgcrypto, btree_gist
 ```
+
+> **Authentification (piège classique)** : l'app se connecte en **TCP** (le
+> `DATABASE_URL` porte un `host`). L'install PGDG configure par défaut
+> `host all all 127.0.0.1/32 scram-sha-256` dans `pg_hba.conf` → l'étape 4
+> fonctionne telle quelle. Si tu obtiens *« peer authentication failed »* ou
+> *« no pg_hba.conf entry »*, ajoute/active cette ligne (fichier
+> `/etc/postgresql/16/main/pg_hba.conf`) puis `sudo systemctl reload postgresql`.
+> Postgres sur le même VPS : le garder en écoute **locale** (`listen_addresses =
+> 'localhost'`, défaut) — pas d'exposition réseau.
 
 > **Pourquoi l'étape 3 en superutilisateur ?** `prisma migrate deploy` tente
 > `CREATE EXTENSION IF NOT EXISTS …`, mais créer une extension exige les droits
