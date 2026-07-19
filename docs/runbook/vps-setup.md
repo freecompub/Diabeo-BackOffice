@@ -312,22 +312,41 @@ Host github.com
 EOF
 ```
 
-### 7.b Clone + build + base
+### 7.b Clone + install
 
 ```bash
 # Node 22 + pnpm dispo pour l'utilisateur diabeo ?
 sudo -u diabeo bash -lc 'node -v && pnpm -v'   # sinon: corepack enable && corepack prepare pnpm@10 --activate
 
+# /opt est root:root → créer le dossier POSSÉDÉ par diabeo avant le clone,
+# sinon `sudo -u diabeo git clone … /opt/diabeo` échoue en « Permission denied ».
+sudo install -d -o diabeo -g diabeo /opt/diabeo
 sudo -u diabeo git clone git@github.com:freecompub/Diabeo-BackOffice.git /opt/diabeo
-cd /opt/diabeo
-sudo -u diabeo pnpm install --frozen-lockfile
-sudo -u diabeo pnpm prisma generate
-# DB : recette jetable → reset+seed ; sinon migrate deploy (+ pré-vol si données)
-sudo -u diabeo --preserve-env env $(grep -v '^#' /etc/diabeo/recette.env | xargs) \
-  pnpm prisma migrate reset --force            # ou `migrate deploy` en prod
-sudo -u diabeo pnpm build
-sudo systemctl restart diabeo-recette
+
+sudo -u diabeo bash -lc 'cd /opt/diabeo && pnpm install --frozen-lockfile && pnpm prisma generate'
 ```
+
+### 7.c Base de données + build + démarrage
+
+⚠️ **Charger l'env via `set -a; . fichier; set +a`** (comme `deploy.sh`), **jamais**
+`env $(grep … | xargs)` : les valeurs multi-lignes (`JWT_*` PEM) et à caractères
+spéciaux (`/`, `+`, `=` des secrets) seraient corrompues. Le fichier étant
+`chmod 600` possédé par `diabeo` (§4), on le source **en tant que `diabeo`**.
+
+```bash
+# DB : recette jetable → reset (drop+recreate+migrations+seed).
+#      En prod / base à préserver → `migrate deploy` (+ pré-vol, cf. release-glycemie-gl.md).
+sudo -u diabeo bash -lc '
+  set -a; . /etc/diabeo/recette.env; set +a
+  cd /opt/diabeo
+  pnpm prisma migrate reset --force        # ⚠️ efface la base recette (assumé jetable)
+  pnpm build                               # NEXT_PUBLIC_* inliné ICI → env requis au build
+'
+sudo systemctl restart diabeo-recette      # (le service a été créé en §6)
+```
+
+Vérifier : `systemctl status diabeo-recette` puis `curl -I http://127.0.0.1:3000`
+(et `curl -I https://staging.diabeo.fr` pour valider la chaîne nginx→app).
 
 Checklist 1er deploy prod (backup restorable, rollback testé, smoke tests) :
 `docs/runbook/migrations.md §7.3`.
