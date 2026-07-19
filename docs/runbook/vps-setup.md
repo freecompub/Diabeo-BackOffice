@@ -241,8 +241,20 @@ grep -rl 'ssl_certificate' /etc/nginx/conf.d/ /etc/nginx/sites-enabled/ 2>/dev/n
 
 ## 6. Service systemd
 
-```ini
-# /etc/systemd/system/diabeo-recette.service
+Fait tourner l'app en tâche de fond : démarrage auto au boot, redémarrage si crash.
+
+**⚠️ Ordre** : `ExecStart=pnpm start` (= `next start`) exige un **build** préalable
+(`.next/`, produit en §7). Active le service **après** le premier `pnpm build`,
+sinon il tourne en **crash-loop** jusqu'à ce que le build existe (comportement
+attendu, pas une erreur de config).
+
+**⚠️ Chemin de `pnpm`** — adapte `ExecStart` au chemin réel : `command -v pnpm`
+(sous l'utilisateur `diabeo`). Avec corepack c'est souvent `/usr/local/bin/pnpm`
+ou un shim `~/.local/...` ; un chemin faux → échec `status=203/EXEC`.
+
+**a. Créer l'unité** :
+```bash
+sudo tee /etc/systemd/system/diabeo-recette.service >/dev/null <<'EOF'
 [Unit]
 Description=Diabeo Backoffice (recette)
 After=network.target
@@ -258,11 +270,24 @@ RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
+EOF
 ```
 
+`EnvironmentFile` charge les **9 variables obligatoires** (§4) : sans elles, l'app
+crashe au boot (`assertRequiredEnv`, ADR #20).
+
+**b. Activer (démarrage auto + lancement immédiat)** :
 ```bash
 sudo systemctl daemon-reload && sudo systemctl enable --now diabeo-recette
 ```
+
+**c. Vérifier** :
+```bash
+systemctl status diabeo-recette                  # active (running) ?
+journalctl -u diabeo-recette -n 50 --no-pager    # logs (diagnostic si crash)
+curl -I http://127.0.0.1:3000                     # 200/redirect = app up
+```
+Après modif de l'unité : `sudo systemctl daemon-reload && sudo systemctl restart diabeo-recette`.
 
 ## 7. Premier déploiement
 
