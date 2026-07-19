@@ -164,10 +164,11 @@ si une variable OBLIGATOIRE manque/est malformée — message clair pointant la 
 | `JWT_PRIVATE_KEY` | PEM RSA privée | `openssl genrsa 2048` |
 | `JWT_PUBLIC_KEY` | PEM RSA publique | `openssl rsa -pubout` |
 
-> **Clés PEM sur UNE ligne, `\n` échappés** (format canonique attendu — `jwt.ts`
-> fait `pem.replace(/\\n/g, "\n")`). C'est le **seul** format fiable pour systemd
-> `EnvironmentFile`, qui ne parse pas les valeurs multi-lignes réelles → une clé
-> collée telle quelle (avec de vrais retours) casse le boot du service.
+> **Clés PEM recommandées sur UNE ligne, `\n` échappés** (format canonique —
+> `jwt.ts` fait `pem.replace(/\\n/g, "\n")`). Le service source l'env **via bash**
+> (§6), donc des PEM multi-lignes réelles fonctionnent **aussi** ; mais le single-line
+> est plus robuste (aucun outil ne bute dessus) et **obligatoire** si tu utilisais
+> `EnvironmentFile=` (parseur systemd qui ne gère pas le multi-ligne — cf. §6).
 > Générer la paire puis la convertir en single-line :
 > ```bash
 > openssl genrsa -out jwt.key 2048 && openssl rsa -in jwt.key -pubout -out jwt.pub
@@ -285,9 +286,13 @@ Fait tourner l'app en tâche de fond : démarrage auto au boot, redémarrage si 
 sinon il tourne en **crash-loop** jusqu'à ce que le build existe (comportement
 attendu, pas une erreur de config).
 
-**⚠️ Chemin de `pnpm`** — adapte `ExecStart` au chemin réel : `command -v pnpm`
-(sous l'utilisateur `diabeo`). Avec corepack c'est souvent `/usr/local/bin/pnpm`
-ou un shim `~/.local/...` ; un chemin faux → échec `status=203/EXEC`.
+**⚠️ NE PAS utiliser `EnvironmentFile=`** pour charger `/etc/diabeo/*.env`. Le
+parseur `EnvironmentFile` de systemd **ne gère pas les valeurs multi-lignes**
+(les clés `JWT_*` PEM) : il perd le fil et **drope silencieusement une variable
+suivante** (symptôme observé : `REDIS_KEY_PREFIX is missing` au boot alors que
+`bash` la lit très bien). On fait donc **sourcer le fichier par bash dans
+`ExecStart`** — le **même** chargeur que le build et `deploy.sh` (`set -a; . ;
+set +a`), un seul mécanisme d'env partout, tolérant à tous les formats.
 
 **a. Créer l'unité** :
 ```bash
@@ -300,8 +305,10 @@ After=network.target
 Type=simple
 User=diabeo
 WorkingDirectory=/opt/diabeo
-EnvironmentFile=/etc/diabeo/recette.env
-ExecStart=/usr/bin/pnpm start
+# Source l'env via bash (gère les PEM multi-lignes) puis exec l'app. `exec` fait
+# de next-server le process principal → signaux/arrêt propres. Chemin pnpm : adapte
+# si `command -v pnpm` (sous diabeo) diffère.
+ExecStart=/bin/bash -lc 'set -a; . /etc/diabeo/recette.env; set +a; exec pnpm start'
 Restart=on-failure
 RestartSec=5
 
@@ -310,7 +317,7 @@ WantedBy=multi-user.target
 EOF
 ```
 
-`EnvironmentFile` charge les **9 variables obligatoires** (§4) : sans elles, l'app
+Le fichier d'env fournit les **9 variables obligatoires** (§4) : sans elles, l'app
 crashe au boot (`assertRequiredEnv`, ADR #20).
 
 **b. Activer (démarrage auto + lancement immédiat)** :
@@ -537,8 +544,8 @@ After=network.target
 Type=simple
 User=diabeo
 WorkingDirectory=/opt/diabeo
-EnvironmentFile=/etc/diabeo/recette.env
-ExecStart=/usr/bin/pnpm start
+# bash source l'env (PEM multi-lignes OK) — PAS EnvironmentFile (parseur divergent). Cf. §6.
+ExecStart=/bin/bash -lc 'set -a; . /etc/diabeo/recette.env; set +a; exec pnpm start'
 Restart=on-failure
 RestartSec=5
 [Install]
