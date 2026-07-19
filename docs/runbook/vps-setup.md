@@ -165,7 +165,22 @@ PROPOSAL_CRON_ENABLED=false
 > **PROD/recette : `MOCK_MODE` / `MOCK_ANTIVIRUS` NE DOIVENT PAS valoir `true`** —
 > `env.ts` refuse le boot en `NODE_ENV=production` si ces flags fuitent.
 
-Permissions : `sudo install -m 600 -o diabeo -g diabeo <env>.env /etc/diabeo/recette.env`.
+Emplacement + permissions (**créer le dossier `/etc/diabeo` d'abord** — sinon
+`install`/`scp` échoue avec *« No such file or directory »*) :
+
+```bash
+# 1. Créer le dossier (droits 750, propriétaire diabeo)
+sudo install -d -m 750 -o diabeo -g diabeo /etc/diabeo
+
+# 2. Y installer le fichier d'env (600, owner diabeo). Si tu l'as transféré via
+#    scp dans ton home (scp diabeo-vps:~/), pars de ~/recette.env :
+sudo install -m 600 -o diabeo -g diabeo ~/recette.env /etc/diabeo/recette.env
+# (une commande : `sudo install -D -m 600 …` crée aussi les dossiers parents)
+
+# 3. Vérifier + ne pas laisser traîner le secret dans le home
+ls -l /etc/diabeo/recette.env      # -rw------- 1 diabeo diabeo …
+rm ~/recette.env
+```
 
 ## 5. Reverse proxy nginx (TLS + cap corps ≥ 10 Mo)
 
