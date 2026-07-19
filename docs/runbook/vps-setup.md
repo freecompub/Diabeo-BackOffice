@@ -243,12 +243,40 @@ sudo systemctl daemon-reload && sudo systemctl enable --now diabeo-recette
 
 ## 7. Premier déploiement
 
+### 7.a Accès au dépôt privé — clé de déploiement (Deploy Key)
+
+Le dépôt est **privé** : le VPS a besoin d'un accès **lecture seule**. Méthode
+propre (réutilisée par `deploy.sh` et le CD) = une **Deploy Key SSH** dédiée.
+
 ```bash
-sudo -u diabeo git clone <repo> /opt/diabeo && cd /opt/diabeo
+# 1. Générer une clé dédiée (utilisateur diabeo)
+sudo -u diabeo ssh-keygen -t ed25519 -f /home/diabeo/.ssh/diabeo_deploy -N "" -C "diabeo-vps-recette"
+sudo -u diabeo cat /home/diabeo/.ssh/diabeo_deploy.pub   # ← copier cette clé PUBLIQUE
+
+# 2. GitHub → repo → Settings → Deploy keys → Add deploy key :
+#    Title=vps-recette, Key=<clé publique>, Allow write access = NON (lecture seule)
+
+# 3. Router github.com vers cette clé
+sudo -u diabeo tee -a /home/diabeo/.ssh/config >/dev/null <<'EOF'
+Host github.com
+  IdentityFile ~/.ssh/diabeo_deploy
+  IdentitiesOnly yes
+EOF
+```
+
+### 7.b Clone + build + base
+
+```bash
+# Node 22 + pnpm dispo pour l'utilisateur diabeo ?
+sudo -u diabeo bash -lc 'node -v && pnpm -v'   # sinon: corepack enable && corepack prepare pnpm@10 --activate
+
+sudo -u diabeo git clone git@github.com:freecompub/Diabeo-BackOffice.git /opt/diabeo
+cd /opt/diabeo
 sudo -u diabeo pnpm install --frozen-lockfile
 sudo -u diabeo pnpm prisma generate
 # DB : recette jetable → reset+seed ; sinon migrate deploy (+ pré-vol si données)
-sudo -u diabeo --preserve-env pnpm prisma migrate deploy   # ou migrate reset --force
+sudo -u diabeo --preserve-env env $(grep -v '^#' /etc/diabeo/recette.env | xargs) \
+  pnpm prisma migrate reset --force            # ou `migrate deploy` en prod
 sudo -u diabeo pnpm build
 sudo systemctl restart diabeo-recette
 ```
