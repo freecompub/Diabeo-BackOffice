@@ -73,6 +73,13 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 SQL
 
+# 3b. Déléguer à diabeo le droit de poser `session_replication_role` (voir note).
+#     REQUIS : une migration (backfill audit_logs) ET la fonction de rétention
+#     SECURITY DEFINER (owned by diabeo) l'utilisent pour franchir le trigger
+#     d'immutabilité. Sans ce GRANT → migrate échoue (P3018, code 42501).
+sudo -u postgres psql -d diabeo -c \
+  "GRANT SET ON PARAMETER session_replication_role TO diabeo;"
+
 # 4. Vérifier la connexion avec le rôle applicatif
 PGPASSWORD='<MOT_DE_PASSE_FORT>' psql -h 127.0.0.1 -U diabeo -d diabeo -c '\dx'
 #   → doit lister pg_trgm, pgcrypto, btree_gist
@@ -101,6 +108,19 @@ PGPASSWORD='<MOT_DE_PASSE_FORT>' psql -h 127.0.0.1 -U diabeo -d diabeo -c '\dx'
 > **superuser** — que le rôle `diabeo` n'a volontairement pas. En les créant
 > d'abord en `postgres`, la migration les trouve déjà présentes et passe sans erreur.
 
+> **Pourquoi l'étape 3b (`GRANT SET ON PARAMETER`) ?** La migration
+> `20260508150000_audit_metadata_patientid_gin` backfille `audit_logs` en
+> franchissant le trigger d'immutabilité via `SET session_replication_role =
+> 'replica'` (superuser-only). La fonction de rétention `audit_log_apply_retention`
+> (`SECURITY DEFINER`, owned by `diabeo`) fait de même **à runtime** (purge CRON).
+> Sans ce grant → `migrate` échoue (`P3018`, `ERROR 42501 permission denied to set
+> parameter`), et la rétention casserait aussi. PostgreSQL **15+** permet cette
+> délégation fine sans faire de `diabeo` un superuser.
+> **Durcissement prod (optionnel)** : pour une immutabilité opposable même au rôle
+> applicatif, faire posséder `audit_logs` (+ trigger) par un rôle **distinct** et
+> ne donner à `diabeo` que `INSERT`/`SELECT` (pas de `DISABLE TRIGGER` possible).
+> Dans ce modèle mono-rôle (diabeo owner), le grant n'affaiblit rien de plus.
+
 ### 3.B — Base managée OVH (DBaaS)
 
 1. Créer une instance **PostgreSQL 16** + une base `diabeo` depuis l'Espace client OVH.
@@ -108,6 +128,11 @@ PGPASSWORD='<MOT_DE_PASSE_FORT>' psql -h 127.0.0.1 -U diabeo -d diabeo -c '\dx'
 3. **Extensions** : OVH DBaaS pré-installe `pg_trgm`/`pgcrypto`/`btree_gist`. Si le
    rôle fourni n'a pas `CREATE EXTENSION`, les activer depuis l'interface OVH (ou
    avec un rôle admin) — mêmes 3 `CREATE EXTENSION IF NOT EXISTS` qu'en 3.A étape 3.
+4. **`session_replication_role`** (cf. 3.A étape 3b) : ⚠️ sur une base **managée**,
+   ce paramètre est souvent **non délégable** (`GRANT SET ON PARAMETER` refusé) voire
+   bloqué. Si `migrate` échoue en `42501`, exécuter le `GRANT` avec le rôle admin
+   OVH ; si impossible, la migration de backfill audit et la rétention CRON ne
+   passeront pas → ouvrir un ticket OVH ou héberger Postgres sur le VPS (3.A).
 
 ### `DATABASE_URL` (à mettre dans l'env, §4)
 
@@ -452,6 +477,8 @@ sudo -u postgres psql -c "CREATE ROLE diabeo LOGIN PASSWORD '<PWD_DB>';"
 sudo -u postgres psql -c "CREATE DATABASE diabeo OWNER diabeo;"
 sudo -u postgres psql -d diabeo -c "CREATE EXTENSION IF NOT EXISTS pg_trgm;
   CREATE EXTENSION IF NOT EXISTS pgcrypto; CREATE EXTENSION IF NOT EXISTS btree_gist;"
+# Droit de poser session_replication_role (backfill audit + rétention) — cf. §3 étape 3b
+sudo -u postgres psql -d diabeo -c "GRANT SET ON PARAMETER session_replication_role TO diabeo;"
 
 # 2. Secrets + fichier d'env (9 obligatoires + fonctionnels)
 sudo install -d -m 750 -o diabeo -g diabeo /etc/diabeo
