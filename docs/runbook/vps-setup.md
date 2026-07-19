@@ -378,16 +378,25 @@ spéciaux (`/`, `+`, `=` des secrets) seraient corrompues. Le fichier étant
 `chmod 600` possédé par `diabeo` (§4), on le source **en tant que `diabeo`**.
 
 ```bash
-# DB : recette jetable → reset (drop+recreate+migrations+seed).
+# DB : recette jetable → reset (migrations) + seed (5 users dev, 2 patients, 30j CGM).
 #      En prod / base à préserver → `migrate deploy` (+ pré-vol, cf. release-glycemie-gl.md).
 sudo -u diabeo bash -lc '
   set -a; . /etc/diabeo/recette.env; set +a
   cd /opt/diabeo
-  pnpm prisma migrate reset --force        # ⚠️ efface la base recette (assumé jetable)
+  pnpm prisma migrate reset --force --skip-seed   # ⚠️ efface la base (jetable) — migrations seules
+  unset NODE_ENV                                   # le seed REFUSE NODE_ENV=production (garde anti-prod)
+  pnpm prisma db seed                              # 5 users dev + 2 patients + 30j CGM
   pnpm build
 '
 sudo systemctl restart diabeo-recette      # (le service a été créé en §6)
 ```
+
+> ⚠️ **Le seed refuse `NODE_ENV=production`** (garde-fou `seed.ts` : il crée des
+> comptes à mots de passe connus `DEV-ONLY-…`). Comme l'env recette porte
+> `NODE_ENV=production`, un `migrate reset` **sans** `--skip-seed` échouerait sur
+> l'étape seed (table `users` vide → « Identifiants invalides » au login). D'où :
+> `reset --skip-seed`, puis `unset NODE_ENV` **pour la seule commande de seed**
+> (le service, lui, garde `NODE_ENV=production`). **On ne seed JAMAIS une vraie prod.**
 
 > ⚠️ **`pnpm build` exige l'env COMPLET, pas seulement `NEXT_PUBLIC_*`.** À la phase
 > « Collecting page data », Next évalue les modules des routes API qui instancient
@@ -525,13 +534,15 @@ sudo install -d -o diabeo -g diabeo /opt/diabeo
 sudo -u diabeo git clone git@github.com:freecompub/Diabeo-BackOffice.git /opt/diabeo
 sudo -u diabeo bash -lc 'cd /opt/diabeo && pnpm install --frozen-lockfile && pnpm prisma generate'
 
-# 4. Base recette jetable (schéma cible + seed) puis build — env chargé via
-#    `set -a; . ; set +a` (jamais `env $(grep|xargs)` : casse les PEM JWT_*).
-#    Ordre migrate→build ; build env-chargé (NEXT_PUBLIC_* inliné au build).
+# 4. Base recette jetable + seed + build — env chargé via `set -a; . ; set +a`
+#    (jamais `env $(grep|xargs)` : casse les PEM JWT_*). Le seed refuse
+#    NODE_ENV=production → reset --skip-seed puis `unset NODE_ENV` + `db seed`.
 sudo -u diabeo bash -lc '
   set -a; . /etc/diabeo/recette.env; set +a
   cd /opt/diabeo
-  pnpm prisma migrate reset --force
+  pnpm prisma migrate reset --force --skip-seed
+  unset NODE_ENV
+  pnpm prisma db seed
   pnpm build
 '
 
