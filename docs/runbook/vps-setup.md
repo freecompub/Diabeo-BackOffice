@@ -20,8 +20,13 @@ Pas de Dockerfile ni de profil compose « prod » dans le dépôt (seul le profi
 ## 2. Prérequis système
 
 ```bash
-sudo apt update && sudo apt install -y nginx postgresql-client git
-corepack enable && corepack prepare pnpm@10 --activate   # Node 22 requis
+sudo apt update && sudo apt install -y nginx postgresql-client git curl ca-certificates
+
+# Node 22 — PAS dans les dépôts APT par défaut. Via NodeSource (dépôt officiel) :
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+node -v                                                  # → v22.x
+corepack enable && corepack prepare pnpm@10 --activate   # pnpm via corepack (fourni par Node)
 ```
 
 ## 3. PostgreSQL 16 — création de la base, du rôle & des extensions
@@ -134,9 +139,16 @@ si une variable OBLIGATOIRE manque/est malformée — message clair pointant la 
 | `JWT_PRIVATE_KEY` | PEM RSA privée | `openssl genrsa 2048` |
 | `JWT_PUBLIC_KEY` | PEM RSA publique | `openssl rsa -pubout` |
 
-> Les clés PEM multi-lignes : stocker avec `\n` échappés ou en variable multi-ligne
-> supportée par systemd `EnvironmentFile` (préférer un secret manager si dispo).
-> Générer une paire JWT : `openssl genrsa -out jwt.key 2048 && openssl rsa -in jwt.key -pubout -out jwt.pub`.
+> **Clés PEM sur UNE ligne, `\n` échappés** (format canonique attendu — `jwt.ts`
+> fait `pem.replace(/\\n/g, "\n")`). C'est le **seul** format fiable pour systemd
+> `EnvironmentFile`, qui ne parse pas les valeurs multi-lignes réelles → une clé
+> collée telle quelle (avec de vrais retours) casse le boot du service.
+> Générer la paire puis la convertir en single-line :
+> ```bash
+> openssl genrsa -out jwt.key 2048 && openssl rsa -in jwt.key -pubout -out jwt.pub
+> awk 'NF{printf "%s\\n",$0}' jwt.key   # → coller la sortie dans JWT_PRIVATE_KEY="…"
+> awk 'NF{printf "%s\\n",$0}' jwt.pub   # → coller la sortie dans JWT_PUBLIC_KEY="…"
+> ```
 
 ### 4.2 Fonctionnelles (selon features)
 
@@ -429,8 +441,10 @@ Un domaine pointe vers un VPS via un enregistrement DNS **de type `A`** (IPv4,
 
 ```bash
 # 0. Prérequis (root)
-sudo apt update && sudo apt install -y nginx postgresql-client git certbot python3-certbot-nginx
-corepack enable && corepack prepare pnpm@10 --activate      # Node 22 requis
+sudo apt update && sudo apt install -y nginx postgresql-client git curl ca-certificates certbot python3-certbot-nginx
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -   # Node 22 (NodeSource)
+sudo apt install -y nodejs
+corepack enable && corepack prepare pnpm@10 --activate
 sudo useradd -m -s /bin/bash diabeo
 
 # 1. PostgreSQL 16 : base + extensions (ou OVH DBaaS → récupérer l'URL)
@@ -453,8 +467,8 @@ CONVERSATION_KEY_PEPPER=$(openssl rand -hex 32)
 AUDIT_PEPPER=$(openssl rand -hex 32)
 CRON_SECRET=$(openssl rand -hex 32)
 REDIS_KEY_PREFIX=diabeo:recette:
-JWT_PRIVATE_KEY="$(cat /tmp/jwt.key)"
-JWT_PUBLIC_KEY="$(cat /tmp/jwt.pub)"
+JWT_PRIVATE_KEY="$(awk 'NF{printf "%s\\n",$0}' /tmp/jwt.key)"
+JWT_PUBLIC_KEY="$(awk 'NF{printf "%s\\n",$0}' /tmp/jwt.pub)"
 UPSTASH_REDIS_REST_URL=<...>
 UPSTASH_REDIS_REST_TOKEN=<...>
 OVH_S3_ENDPOINT=https://s3.gra.io.cloud.ovh.net
@@ -465,15 +479,21 @@ OVH_S3_SECRET_KEY=<...>
 EOF
 sudo chmod 600 /etc/diabeo/recette.env && shred -u /tmp/jwt.key /tmp/jwt.pub
 
-# 3. Code + build
-sudo -u diabeo git clone <URL_REPO> /opt/diabeo && cd /opt/diabeo
-sudo -u diabeo pnpm install --frozen-lockfile
-sudo -u diabeo pnpm prisma generate
-sudo -u diabeo pnpm build
+# 3. Code (repo PRIVÉ → Deploy Key, cf. §7.a pour la génération + ajout GitHub)
+#    /opt étant root:root, créer le dossier possédé par diabeo AVANT le clone.
+sudo install -d -o diabeo -g diabeo /opt/diabeo
+sudo -u diabeo git clone git@github.com:freecompub/Diabeo-BackOffice.git /opt/diabeo
+sudo -u diabeo bash -lc 'cd /opt/diabeo && pnpm install --frozen-lockfile && pnpm prisma generate'
 
-# 4. Base recette jetable : schéma cible + seed
-sudo -u diabeo --preserve-env env $(grep -v '^#' /etc/diabeo/recette.env | xargs) \
+# 4. Base recette jetable (schéma cible + seed) puis build — env chargé via
+#    `set -a; . ; set +a` (jamais `env $(grep|xargs)` : casse les PEM JWT_*).
+#    Ordre migrate→build ; build env-chargé (NEXT_PUBLIC_* inliné au build).
+sudo -u diabeo bash -lc '
+  set -a; . /etc/diabeo/recette.env; set +a
+  cd /opt/diabeo
   pnpm prisma migrate reset --force
+  pnpm build
+'
 
 # 5. Service systemd
 sudo tee /etc/systemd/system/diabeo-recette.service >/dev/null <<'EOF'
@@ -494,6 +514,8 @@ EOF
 sudo systemctl daemon-reload && sudo systemctl enable --now diabeo-recette
 
 # 6. nginx + TLS (DNS staging → VPS déjà propagé, cf. §11)
+#    Retirer le vhost par défaut, sinon il capte certbot (page « Welcome to nginx »).
+sudo rm -f /etc/nginx/sites-enabled/default
 sudo tee /etc/nginx/conf.d/diabeo-recette.conf >/dev/null <<'EOF'
 server {
   server_name staging.diabeo.fr;
