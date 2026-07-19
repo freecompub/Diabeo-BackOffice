@@ -188,6 +188,15 @@ rm ~/recette.env
 transmet à l'app locale `127.0.0.1:3000`. `client_max_body_size 10m` relève la
 limite d'upload (défaut 1 Mo → 413) requise par le sync MyDiabby.
 
+**⚠️ Retirer d'abord le site par défaut.** Sur Debian/Ubuntu, l'install nginx
+pose `/etc/nginx/sites-enabled/default` — un `server` **`default_server`** sur le
+port 80 qui sert des fichiers statiques (`root /var/www/html`). S'il reste, il
+**capte** `certbot` (le certificat s'attache au mauvais bloc) et sert la page
+« Welcome to nginx » au lieu de proxifier vers l'app → symptôme classique.
+```bash
+sudo rm -f /etc/nginx/sites-enabled/default   # désactive le vhost par défaut
+```
+
 **a. Config nginx** (créer le fichier, tester, recharger) :
 ```bash
 sudo tee /etc/nginx/conf.d/diabeo-recette.conf >/dev/null <<'EOF'
@@ -212,9 +221,23 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d staging.diabeo.fr
 ```
-`certbot` modifie automatiquement la config (ajout du 443 + redirection 80→443) et
-programme le renouvellement. **Prérequis** : le DNS `staging.diabeo.fr` doit déjà
-pointer vers le VPS (§11) et nginx doit tourner avec ce `server_name`.
+`certbot` modifie automatiquement `diabeo-recette.conf` (ajout du bloc `443 ssl` +
+redirection `80→443`) et programme le renouvellement. **Prérequis** : le DNS
+`staging.diabeo.fr` doit déjà pointer vers le VPS (§11) et nginx doit tourner avec
+ce `server_name`.
+
+**c. Vérifier + dépanner :**
+```bash
+sudo nginx -t                         # syntaxe OK
+sudo certbot renew --dry-run          # renouvellement fonctionnel
+# Le cert doit être attaché à diabeo-recette.conf, PAS au site default :
+grep -rl 'ssl_certificate' /etc/nginx/conf.d/ /etc/nginx/sites-enabled/ 2>/dev/null
+```
+- Un **502 Bad Gateway** en HTTPS = nginx OK mais l'app ne tourne pas encore sur
+  `:3000` (normal tant que le service systemd n'est pas démarré — cf. §6/§7).
+- **« Welcome to nginx » / page statique** = le site `default` a capté certbot :
+  `sudo rm -f /etc/nginx/sites-enabled/default`, puis relancer
+  `sudo certbot --nginx -d staging.diabeo.fr` et `sudo systemctl reload nginx`.
 
 ## 6. Service systemd
 
