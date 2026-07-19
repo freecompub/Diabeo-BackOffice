@@ -377,10 +377,16 @@ sudo -u diabeo bash -lc '
   set -a; . /etc/diabeo/recette.env; set +a
   cd /opt/diabeo
   pnpm prisma migrate reset --force        # ⚠️ efface la base recette (assumé jetable)
-  pnpm build                               # NEXT_PUBLIC_* inliné ICI → env requis au build
+  pnpm build
 '
 sudo systemctl restart diabeo-recette      # (le service a été créé en §6)
 ```
+
+> ⚠️ **`pnpm build` exige l'env COMPLET, pas seulement `NEXT_PUBLIC_*`.** À la phase
+> « Collecting page data », Next évalue les modules des routes API qui instancient
+> `PrismaClient` → `DATABASE_URL` est requis, sinon échec *« DATABASE_URL is required
+> to instantiate PrismaClient »*. **Ne jamais lancer `pnpm build` nu** : toujours dans
+> le sous-shell env-chargé ci-dessus (c'est aussi ce que fait `deploy.sh`).
 
 Vérifier : `systemctl status diabeo-recette` puis `curl -I http://127.0.0.1:3000`
 (et `curl -I https://staging.diabeo.fr` pour valider la chaîne nginx→app).
