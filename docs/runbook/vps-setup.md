@@ -3,6 +3,12 @@
 > Guide de mise en place d'un environnement (recette ou prod) sur VPS OVHcloud.
 > Fidèle au dépôt : la liste d'env fait autorité = `src/lib/env.ts`. Déploiement
 > **manuel** via `deploy.sh` (fourni à la racine). Migrations : `docs/runbook/migrations.md`.
+>
+> **Autorité & périmètre** : ce runbook couvre le **provisioning + le déploiement**
+> (systemd, migrations versionnées). Pour l'**exploitation day-2** — rotation des
+> secrets, drills de restauration chiffrés (`age`/`.pgpass`), monitoring `/api/health`,
+> forwarding de logs HDS — voir **[`docs/operations/runbook.md`](../operations/runbook.md)**.
+> Prod : lire d'abord le **§13 (préparation PROD)** ci-dessous.
 
 ## 1. Architecture cible
 
@@ -444,6 +450,12 @@ WantedBy=timers.target
 ```bash
 sudo systemctl enable --now diabeo-backup.timer
 ```
+
+> Ce timer déclenche `deploy.sh backup` (pg_dump gzip → Object Storage) — suffisant
+> en recette. **En prod**, la procédure HDS complète (utilisateur dédié `diabeo-backup`,
+> `.pgpass` 0600, chiffrement client `age`, Object Lock, lifecycle Glacier, **drill de
+> restauration trimestriel** + `decrypt-smoke`) est décrite dans
+> **[`docs/operations/runbook.md`](../operations/runbook.md)** §Backups / §Manual setup.
 
 ## 10. Vérification finale
 
