@@ -184,8 +184,13 @@ rm ~/recette.env
 
 ## 5. Reverse proxy nginx (TLS + cap corps ≥ 10 Mo)
 
-```nginx
-# /etc/nginx/conf.d/diabeo.conf
+**Rôle** : nginx écoute sur les ports publics 80/443, gère le **HTTPS**, et
+transmet à l'app locale `127.0.0.1:3000`. `client_max_body_size 10m` relève la
+limite d'upload (défaut 1 Mo → 413) requise par le sync MyDiabby.
+
+**a. Config nginx** (créer le fichier, tester, recharger) :
+```bash
+sudo tee /etc/nginx/conf.d/diabeo-recette.conf >/dev/null <<'EOF'
 server {
   server_name staging.diabeo.fr;
   client_max_body_size 10m;     # OBLIGATOIRE (sync MyDiabby) — cf. infra-body-limits.md
@@ -197,9 +202,19 @@ server {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
   }
-  # + TLS (certbot / OVH). Écouter en 443, rediriger 80→443.
 }
+EOF
+sudo nginx -t && sudo systemctl reload nginx
 ```
+
+**b. TLS via certbot** (installe certbot + son plugin nginx, puis émet le certificat) :
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d staging.diabeo.fr
+```
+`certbot` modifie automatiquement la config (ajout du 443 + redirection 80→443) et
+programme le renouvellement. **Prérequis** : le DNS `staging.diabeo.fr` doit déjà
+pointer vers le VPS (§11) et nginx doit tourner avec ce `server_name`.
 
 ## 6. Service systemd
 
