@@ -592,3 +592,76 @@ curl -I https://staging.diabeo.fr
 > ⚠️ **Ne jamais régénérer `HEALTH_DATA_ENCRYPTION_KEY` après le 1er boot** sans plan
 > de rotation : il déchiffre les données de santé existantes. **Redis Upstash** et
 > **OVH Object Storage** sont des services managés (créés dans leurs consoles).
+
+## 13. Préparation PROD — différences avec la recette & pièges à éviter
+
+Les §1-12 valent pour **recette ET prod** ; seule change la valeur des `<…>`
+(`recette`→`prod`, `staging.diabeo.fr`→`app.diabeo.fr`). Mais la **prod ne se
+reset pas** : quelques étapes divergent, et tous les pièges rencontrés en recette
+sont ici en checklist pour ne pas les revivre.
+
+### 13.1 Différences recette → prod
+
+| Aspect | Recette | **Prod** |
+|---|---|---|
+| Domaine / `APP_ENV` | `staging.diabeo.fr` / `recette` | `app.diabeo.fr` / `prod` |
+| Fichier d'env | `/etc/diabeo/recette.env` | `/etc/diabeo/prod.env` (secrets **distincts**) |
+| `REDIS_KEY_PREFIX` | `diabeo:recette:` | `diabeo:prod:` |
+| Service systemd | `diabeo-recette` | `diabeo-prod` (unité, conf nginx, cert dédiés) |
+| Base de données | jetable → `migrate reset` + seed | **`migrate deploy`** (jamais reset) sur **données réelles** |
+| **Seed** | 5 users dev `DEV-ONLY-…` | **JAMAIS** (le garde `NODE_ENV=production` le bloque — c'est voulu) |
+| Migration destructive | reset (données perdues, OK) | **backup + pré-vol** AVANT (cf. `release-*.md`, `migrations.md §7`) |
+| DB / bucket S3 / clés | `-recette` | `-prod` séparés (aucun partage de secret) |
+
+### 13.2 Étapes prod (delta vs §7.c)
+
+En prod on **n'exécute jamais** `migrate reset` ni le seed. À la place :
+
+```bash
+# 1. Backup vérifié restorable AVANT toute migration (surtout si destructive)
+cd /opt/diabeo && APP_ENV=prod ./deploy.sh backup
+
+# 2. Pré-vol si la release porte une migration à CHECK/DROP sur données existantes
+#    (cf. le runbook de la release, ex. docs/runbook/release-glycemie-gl.md)
+sudo -u diabeo bash -lc 'set -a; . /etc/diabeo/prod.env; set +a;
+  psql "$DATABASE_URL" -f ops/preflight/<release>.sql'   # lignes « *_bloquant » = 0
+
+# 3. Migrations versionnées (idempotent, PAS de reset, PAS de db push) + build, env chargé
+sudo -u diabeo bash -lc '
+  set -a; . /etc/diabeo/prod.env; set +a
+  cd /opt/diabeo
+  pnpm prisma migrate deploy          # applique les migrations pending
+  pnpm prisma migrate status          # vérifie : aucune pending
+  pnpm build
+'
+sudo systemctl restart diabeo-prod
+```
+
+Ensuite les déploiements suivants passent par `APP_ENV=prod ./deploy.sh update`
+(qui fait exactement pull + install + generate + **migrate deploy** + build +
+restart, env sourcé — cf. §8).
+
+### 13.3 Checklist anti-pièges (tous rencontrés en recette)
+
+- [ ] **Node 22 installé** (NodeSource) — `corepack` en dépend, absent d'un VPS vierge (§2).
+- [ ] **Postgres** : rôle non-superuser + 3 extensions **pré-créées** en `postgres`
+      + **`GRANT SET ON PARAMETER session_replication_role TO diabeo`** (§3 étape 3b),
+      sinon `migrate deploy` échoue en `42501` (backfill audit) et la rétention CRON casse.
+- [ ] **9 variables obligatoires** présentes et valides (§4). Secrets **distincts** de la recette.
+- [ ] **Clés JWT en single-line `\n`-échappé** (§4) — les PEM multi-lignes sont tolérées
+      car le service source l'env via **bash** (pas `EnvironmentFile`, cf. §6).
+- [ ] **Service systemd = `ExecStart` qui source l'env via bash** (§6), JAMAIS `EnvironmentFile=`
+      (parseur qui drope les variables après une valeur multi-ligne → `… is missing` au boot).
+- [ ] **Dépôt privé** : Deploy Key lecture seule + `install -d -o diabeo /opt/diabeo` avant clone (§7.a/b).
+- [ ] **`pnpm build` toujours env-chargé** (DATABASE_URL requis à « Collecting page data ») (§7.c).
+- [ ] **nginx** : `rm -f /etc/nginx/sites-enabled/default` AVANT certbot, sinon le vhost
+      par défaut capte le cert (§5).
+- [ ] **Base prod** : `migrate deploy` (jamais `reset`, jamais `db push` — ADR #17), **aucun seed**.
+- [ ] **`HEALTH_DATA_ENCRYPTION_KEY` figée** après le 1er boot (déchiffre toute la PHI ;
+      rotation = plan dédié, cf. `docs/operations/runbook.md` §Secrets).
+- [ ] **Backup restorable + pré-vol** avant toute migration destructive (§13.2, `migrations.md §7`).
+
+> **Durcissement HDS optionnel (prod)** : faire posséder `audit_logs` + son trigger
+> d'immutabilité par un rôle **distinct** de `diabeo`, et ne donner à l'app que
+> `INSERT`/`SELECT` (pas de `DISABLE TRIGGER` possible) — immutabilité opposable même
+> au rôle applicatif. Cf. note §3 étape 3b.

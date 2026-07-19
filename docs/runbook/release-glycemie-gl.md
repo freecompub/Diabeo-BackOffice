@@ -37,13 +37,21 @@ dans les bornes → aucun risque de CHECK) :
 # 1. Déployer le CODE (pull + build + restart) — procédure VPS habituelle
 ./deploy.sh update
 
-# 2. Réinitialiser le schéma sur la version cible + re-seed
-#    (reset = drop + recreate + applique TOUTES les migrations + seed)
-pnpm prisma migrate reset --force        # ⚠️ efface la base recette (assumé jetable)
-# (reset lance le seed via prisma.config migrations.seed ; sinon : pnpm prisma db seed)
+# 2. Réinitialiser le schéma sur la version cible, PUIS re-seed séparément.
+#    ⚠️ Le seed REFUSE NODE_ENV=production (garde anti-prod, seed.ts) → si l'env
+#    recette porte NODE_ENV=production, un `reset` sans --skip-seed échoue sur le
+#    seed (table users vide → login KO). D'où : --skip-seed puis `unset NODE_ENV`.
+sudo -u diabeo bash -lc '
+  set -a; . /etc/diabeo/recette.env; set +a
+  cd /opt/diabeo
+  pnpm prisma migrate reset --force --skip-seed   # ⚠️ efface la base recette (jetable)
+  unset NODE_ENV
+  pnpm prisma db seed                              # CGM 0.40–4.00, dans les bornes
+'
 
 # 3. Vérifier l'état
-pnpm prisma migrate status               # toutes appliquées, aucune pending
+sudo -u diabeo bash -lc 'set -a; . /etc/diabeo/recette.env; set +a; cd /opt/diabeo;
+  pnpm prisma migrate status'               # toutes appliquées, aucune pending
 ```
 
 Puis **smoke tests** (§4).
