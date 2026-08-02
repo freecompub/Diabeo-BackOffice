@@ -22,6 +22,27 @@ merge sur main  →  workflow "CI" (tests)  ──verte──▶  workflow "Depl
 
 ## 2. Installation du runner self-hosted (une seule fois, sur le VPS)
 
+> ### 🔑 Quel token ? — **Registration token, PAS un PAT**
+>
+> Cette architecture **ne nécessite AUCUN Personal Access Token (PAT)**. Le
+> `<TOKEN_FOURNI_PAR_GITHUB>` de la commande `config.sh` ci-dessous est un
+> **registration token** :
+> - il est **affiché tout prêt** par GitHub dans *Settings → Actions → Runners →
+>   New self-hosted runner* (page de création du runner) ;
+> - **aucune permission à choisir** — il ne sert qu'à enregistrer le runner ;
+> - il est **jetable** (expire en ~1 h ; il en faut un nouveau à chaque
+>   ré-enregistrement).
+>
+> Le reste du CD fonctionne **sans secret longue-durée** : le workflow utilise le
+> `GITHUB_TOKEN` auto-injecté (`permissions: contents: read`), et le `deploy.sh`
+> tire le code via la **Deploy Key SSH** déjà posée (`vps-setup.md §7.a`).
+>
+> **Si (et seulement si)** tu veux scripter l'enregistrement/rotation du runner via
+> l'API GitHub, un fine-grained PAT **scopé au seul repo `Diabeo-BackOffice`** avec
+> **Repository permissions → Administration : Read and write** (et *rien* d'autre)
+> suffit. Sinon, reste sur le registration token de l'UI — c'est le sens du choix
+> « runner self-hosted » : pas de PAT à gérer.
+
 Dans GitHub : *Settings → Actions → Runners → New self-hosted runner* (Linux x64) —
 suivre les commandes fournies, **en ajoutant le label `recette`** et en installant
 le service sous l'utilisateur applicatif :
