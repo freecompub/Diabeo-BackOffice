@@ -7,6 +7,24 @@ releases, so entries are grouped by merged PR and calendar date.
 
 ## [Unreleased]
 
+### Changed
+
+- **Déploiement consolidé sur `deploy.sh` (racine, systemd)** — le legacy
+  `scripts/deploy.sh` (pm2) est **supprimé**. Ses deux apports utiles sont portés
+  dans le script racine : la **sonde `/api/health`** post-restart (200 = OK ;
+  503 persistant = app UP mais dépendance dégradée → WARN non fatal ; aucune
+  réponse → échec exit 3) et le **garde bootstrap** `_prisma_migrations`
+  (refuse de migrer une DB jamais initialisée en migrations versionnées, bypass
+  `MIGRATION_BOOTSTRAPPED=1`). Nouvelle sous-commande `./deploy.sh health`.
+
+### Fixed
+
+- **`deploy.sh status` — `pg_isready`/`psql` sur `DATABASE_URL`** : l'URL Prisma
+  porte `?schema=public` (paramètre Prisma, non-libpq) qui faisait échouer
+  `pg_isready` (« invalid URI query parameter: schema »). L'URL est désormais
+  dérivée sans query string (`DB_URL_LIBPQ`) pour tous les appels libpq
+  (`pg_isready`, garde bootstrap `psql`, `pg_dump`).
+
 ## 2026-04-15 — Ops scripts (deploy, backup, decrypt-smoke) — HDS-hardened
 
 ### Added
