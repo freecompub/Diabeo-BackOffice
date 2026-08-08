@@ -33,6 +33,10 @@ GIT_REF="${GIT_REF:-main}"
 S3_BUCKET_BACKUPS="${S3_BUCKET_BACKUPS:-diabeo-backups-${APP_ENV}}"
 HEALTH_URL="${HEALTH_URL:-http://localhost:3000/api/health}"
 HEALTH_TIMEOUT_SEC="${HEALTH_TIMEOUT_SEC:-30}"
+# Dead-man's-switch backup (optionnel) : URL de ping Healthchecks.io (ou compatible).
+# Vide = désactivé. Si renseignée : ping /start au début, base=succès, /fail à l'échec
+# → alerte si le backup n'a PAS tourné. Cf. docs/runbook/supervision.md.
+BACKUP_PING_URL="${BACKUP_PING_URL:-}"
 
 log()  { printf '\033[36m[deploy]\033[0m %s\n' "$*"; }
 warn() { printf '\033[33m[deploy][WARN]\033[0m %s\n' "$*" >&2; }
@@ -133,8 +137,25 @@ cmd_migrate() {
   pnpm prisma migrate status
 }
 
+# Ping du dead-man's-switch. $1 = suffixe (start|fail|"" pour succès). No-op si
+# BACKUP_PING_URL vide ou curl absent ; jamais fatal (ne casse pas le backup).
+ping_backup() {
+  [ -n "$BACKUP_PING_URL" ] || return 0
+  command -v curl >/dev/null || return 0
+  curl -fsS -m 10 -o /dev/null "${BACKUP_PING_URL}${1:+/$1}" || true
+}
+
+# Trap EXIT (posé par cmd_backup) : pinge succès si BACKUP_DONE=1, sinon /fail.
+# Fire aussi bien sur `fail` (exit 1) que sur fin normale → alerte fiable.
+on_backup_exit() {
+  if [ "${BACKUP_DONE:-0}" = 1 ]; then ping_backup; else ping_backup fail; fi
+}
+
 cmd_backup() {
   load_env
+  BACKUP_DONE=0
+  ping_backup start
+  trap on_backup_exit EXIT
   local ts stamp dump
   ts="$(date -u +%Y/%m/%d)"; stamp="$(date -u +%H%M%S)"
   dump="/tmp/diabeo-${APP_ENV}-${stamp}.sql.gz"
@@ -144,10 +165,11 @@ cmd_backup() {
   if command -v aws >/dev/null; then
     log "Upload s3://${S3_BUCKET_BACKUPS}/${ts}/"
     aws --endpoint-url "${OVH_S3_ENDPOINT:?}" s3 cp "$dump" \
-      "s3://${S3_BUCKET_BACKUPS}/${ts}/diabeo-backup-${stamp}.sql.gz"
+      "s3://${S3_BUCKET_BACKUPS}/${ts}/diabeo-backup-${stamp}.sql.gz" || fail "upload S3 a échoué"
   else
     log "aws-cli absent — dump laissé sur $dump (uploader manuellement)."
   fi
+  BACKUP_DONE=1            # succès → le trap EXIT pinge le succès
   log "✅ Backup OK."
 }
 

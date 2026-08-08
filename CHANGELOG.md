@@ -7,6 +7,16 @@ releases, so entries are grouped by merged PR and calendar date.
 
 ## [Unreleased]
 
+### Added
+
+- **Supervision VPS** (`docs/runbook/supervision.md`) — stack Tier 0 pour serveur
+  unique : moniteur uptime externe sur `/api/health`, **netdata** (métriques hôte +
+  alarmes) et **dead-man's-switch** de backup. Alarmes netdata versionnées dans
+  `ops/netdata/` (disque/inodes, connexions Postgres, collecteur `pg_monitor`
+  lecture seule). `deploy.sh backup` pinge Healthchecks.io via `BACKUP_PING_URL`
+  (start/succès/`fail`). Tier 1 prod (LDP, Sentry/GlitchTip scrubbé, fail2ban)
+  référencé. Pas de Prometheus/Grafana (surdimensionné pour un VPS unique).
+
 ### Changed
 
 - **Déploiement consolidé sur `deploy.sh` (racine, systemd)** — le legacy

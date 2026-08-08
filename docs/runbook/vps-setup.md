@@ -437,6 +437,9 @@ Type=oneshot
 User=diabeo
 WorkingDirectory=/opt/diabeo
 Environment=APP_ENV=recette
+# Dead-man's-switch (optionnel) : ping Healthchecks.io → alerte si le backup n'a
+# PAS tourné. Cf. docs/runbook/supervision.md. (ou mettre BACKUP_PING_URL dans l'env-file)
+# Environment=BACKUP_PING_URL=https://hc-ping.com/<uuid>
 ExecStart=/opt/diabeo/deploy.sh backup
 ```
 ```ini
@@ -456,6 +459,9 @@ sudo systemctl enable --now diabeo-backup.timer
 > `.pgpass` 0600, chiffrement client `age`, Object Lock, lifecycle Glacier, **drill de
 > restauration trimestriel** + `decrypt-smoke`) est décrite dans
 > **[`docs/operations/runbook.md`](../operations/runbook.md)** §Backups / §Manual setup.
+>
+> **Supervision** (uptime `/api/health`, netdata disque/RAM/Postgres,
+> dead-man's-switch backup) : voir **[`docs/runbook/supervision.md`](./supervision.md)**.
 
 ## 10. Vérification finale
 
