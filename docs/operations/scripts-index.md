@@ -14,8 +14,9 @@ issue so the script can be productionized.
 |---------------------------------------------|--------|-------|-------|
 | `GET /api/health`                           | ✓ | backend | Implemented in PR #107 — `src/app/api/health/route.ts` |
 | `scripts/test-e2e.sh`                       | ✓ | QA | Existing, boots Playwright fixture stack |
-| `scripts/deploy.sh update`                  | ✓ | devops | Wraps manual fallback: git pull + pnpm + migrate + build + pm2 restart + health probe. Manual steps (pm2 setup) in runbook §Manual setup |
-| `docker-compose.prod.yml`                   | ✗ | devops | Prod currently runs `next start` under pm2 directly. Dépend de US-1108 Nginx + US-1107 TLS |
+| `deploy.sh update` (repo root)              | ✓ | devops | **Autorité** : git pull + pnpm + `migrate deploy` + build + **`systemctl restart`** (systemd). Provisioning : `docs/runbook/vps-setup.md`. |
+| ~~`scripts/deploy.sh`~~ (legacy pm2)        | ⚠ | devops | **Périmé** — variante pm2 antérieure, supersédée par `deploy.sh` racine (systemd). Ne pas utiliser en prod ; à retirer. |
+| ~~`docker-compose.prod.yml`~~               | ✗ | devops | **Sans objet** — la prod tourne sous **systemd** (`next start`), pas Docker/pm2. Cf. `vps-setup.md §6`. |
 | `scripts/backup-postgres.sh` (cron 02:00)   | ✓ | devops | pg_dump custom + aws s3 cp + rotation locale 14 jours. Requires one-time OVH bucket + cron + `/etc/diabeo/backup.env` setup (runbook §Manual setup) |
 | `scripts/decrypt-smoke.ts`                  | ✓ | backend | Post-restore validation: samples 5 users × 5 encrypted fields via `safeDecryptField`. Run manually during the quarterly restore drill |
 | `docs/operations/drill-log.md`              | ✗ | on-call | Created on first drill — template in incident-response.md |
@@ -29,12 +30,13 @@ Roughly ordered by impact / effort:
 
 1. **OVH Cloud Monitoring alert on `/api/health`** — endpoint exists, just
    needs a 30 s ping rule + webhook to on-call Slack. ~30 min of ops work.
-2. **`scripts/deploy.sh update`** — wrap the manual fallback from the
-   runbook (8 lines of bash + pm2 reload). Unblocks routine deploys.
+2. ~~**`scripts/deploy.sh update`**~~ — **fait** : le déploiement passe par
+   `deploy.sh` (racine, systemd + `migrate deploy`). La variante `scripts/deploy.sh`
+   (pm2) est périmée.
 3. **`scripts/backup-postgres.sh` + cron** — OVH snapshots are good but
    application-level dumps give faster restore + portability.
-4. **`docker-compose.prod.yml`** — only needed if we move off pm2; not
-   blocking anything today.
+4. ~~**`docker-compose.prod.yml`**~~ — **sans objet** : la prod tourne sous
+   systemd (cf. `vps-setup.md`), pas Docker. Aucun besoin.
 5. **`scripts/decrypt-smoke.ts`** — nice-to-have for the restore drill;
    a `SELECT decrypt(...) FROM users LIMIT 10` does the same job manually.
 6. **`docs/compliance/breach-notification.md`** — DPO-owned, legal doc;

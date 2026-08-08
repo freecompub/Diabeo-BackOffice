@@ -1,16 +1,20 @@
 # Operational Runbook
 
 Day-to-day operations playbook for the Diabeo Backoffice on OVHcloud GRA
-(Docker Compose + managed PostgreSQL + Upstash Redis + Object Storage).
+(Node.js + systemd + managed PostgreSQL + Upstash Redis + Object Storage).
 
 > **Audience**: on-call engineers. Assumes SSH access to the VPS, `gh` CLI
 > authentication, and access to the shared 1Password vault for secrets.
 >
-> **Status markers**: sections tagged **[TODO — not yet implemented]** describe
-> target procedures; the referenced scripts / endpoints do NOT exist yet.
-> See [scripts-index.md](./scripts-index.md) for implementation status.
-> Operators: do NOT rely on those sections in an incident — fall back to
-> manual `git pull` + `pnpm build` until the scripts are shipped.
+> **Authority**: This runbook covers **day-2 operations** (backups, secrets,
+> monitoring, drills). For **provisioning and deployment**, the authoritative
+> sources are:
+> - **Systemd + VPS setup**: [`docs/runbook/vps-setup.md`](./vps-setup.md) (§6–8)
+> - **Database migrations**: [`docs/runbook/migrations.md`](./migrations.md) (versioned Prisma 7, `migrate deploy`)
+> - **Deployment script**: [`deploy.sh`](../../deploy.sh) (repo root — `./deploy.sh update/migrate/backup/status`)
+>
+> **Update history**: This runbook was corrected 2026-07-19 to remove obsolete
+> mechanics (`prisma db push`, `pm2`, Docker-based prod deployment).
 
 - [Environments](#environments)
 - [Deployment](#deployment)
@@ -37,7 +41,8 @@ Each env has its own:
 - PostgreSQL instance (OVH managed DB in prod/recette, local container in dev).
 - Upstash Redis (free tier for recette, paid tier for prod).
 - Object Storage bucket (`diabeo-prod-documents`, `diabeo-staging-documents`).
-- Env-file (`.env.production`, `.env.staging`) — never committed.
+- Env-file `/etc/diabeo/<env>.env` (`prod.env` / `recette.env`, chmod 600, owner
+  `diabeo`) — never committed, sourced by the systemd unit (cf. `vps-setup.md §4/§6`).
 
 ---
 
@@ -46,48 +51,47 @@ Each env has its own:
 ### Prerequisites
 
 - Main branch green on GitHub Actions (E2E + unit + lint/typecheck).
-- Every migration listed in `prisma/sql/` that is not yet applied has been
-  reviewed with SQL-pro and medical-domain-validator agents.
+- All versioned migrations in `prisma/migrations/` have been reviewed with
+  SQL-pro and medical-domain-validator agents.
 - ChangeLog updated for the release.
 
-### Standard deploy (prod)
+### Standard deploy (prod/recette)
 
-`scripts/deploy.sh` ships in-repo. Complete the [Manual setup
-checklist](#manual-setup-checklist) once per host before the first run.
+The deployment script `deploy.sh` is in the **repo root** (not `scripts/`).
+Complete the [Manual setup checklist](#manual-setup-checklist) once per host
+before the first run.
 
 ```sh
 ssh diabeo@app.diabeo.fr
 
-cd /opt/diabeo/backoffice
+cd /opt/diabeo
 git fetch origin main
 git log HEAD..origin/main --oneline   # review incoming commits
 
-# Apply any raw SQL migrations FIRST (Prisma db push will fail otherwise
-# for column type changes like VARCHAR → enum).
-psql $DATABASE_URL < prisma/sql/<new_migration>.sql
+# Single command: pull + install + generate + migrate deploy + build + restart
+./deploy.sh update
 
-# Pull + build + swap containers
-./scripts/deploy.sh update     # [TODO]
-
-# Health check (endpoint exists — implemented in PR #107)
+# Health check
 curl -sf https://app.diabeo.fr/api/health || echo "DEPLOY FAILED"
 ```
 
-`scripts/deploy.sh update` runs, in order:
+`./deploy.sh update` executes, in order:
 
-1. `git fetch origin main` + warns on any new `prisma/sql/*.sql` (operator
-   must apply those with `psql` BEFORE acknowledging via `APPLIED_SQL=1`)
-2. `git pull --ff-only origin main`
-3. `pnpm install --frozen-lockfile`
-4. `pnpm prisma generate`
-5. `pnpm prisma db push --accept-data-loss=false`
-6. `pnpm tsc --noEmit` + `pnpm test` (hard gate)
-7. `pnpm build`
-8. `pm2 restart $PM2_PROCESS --update-env`
-9. Health probe on `/api/health` with up to 30 s retry window
+1. `git fetch origin main` + `git reset --hard origin/main`
+2. `pnpm install --frozen-lockfile`
+3. `pnpm prisma generate`
+4. **`pnpm prisma migrate deploy`** — applies versioned migrations (idempotent,
+   see [`docs/runbook/migrations.md`](./migrations.md) for details and rollback)
+5. `pnpm build` (requires full env: `DATABASE_URL` mandatory)
+6. `sudo systemctl restart diabeo-${APP_ENV}` (systemd service)
+7. Health probe on `/api/health`
 
-Exit code 3 means the health probe failed — manual rollback required
-(see [Rollback](#rollback)).
+For releases with **destructive migrations** (e.g. `DROP COLUMN`), pre-run:
+```sh
+./deploy.sh backup                                # backup before the risky migration
+psql "$DATABASE_URL" -f ops/preflight/preflight.sql  # any pre-flight SQL
+./deploy.sh update                                # run the deploy
+```
 
 ### Emergency hotfix (skipping CI)
 
@@ -96,7 +100,7 @@ necessary:
 
 ```sh
 git cherry-pick <hotfix-sha>
-./scripts/deploy.sh update
+./deploy.sh update
 # Open a post-mortem issue within 24 h.
 ```
 
@@ -104,68 +108,82 @@ git cherry-pick <hotfix-sha>
 
 ## Rollback
 
+See [`docs/runbook/migrations.md` §5](./migrations.md#5-plan-de-rollback) for
+detailed rollback procedures under Prisma 7 versioned migrations. Below is a
+quick reference.
+
 ### Fast rollback (same day, no schema change)
 
 ```sh
 ssh diabeo@app.diabeo.fr
-cd /opt/diabeo/backoffice
+cd /opt/diabeo
 git reset --hard <previous-sha>
-./scripts/deploy.sh update
+./deploy.sh update
 ```
 
 Uses the same build pipeline; takes ~2 min.
 
 ### Rollback across a migration
 
-If the deploy that introduced the issue also ran a migration, you **cannot**
-simply `git reset` the code — the DB is still on the new schema.
+If the deploy included a migration, you **cannot** simply `git reset` — the DB
+is still on the new schema. Prisma 7 migrations are forward-only.
 
-Steps:
+**Steps**:
 
-1. Check `prisma/sql/` for the migration that landed in the bad release.
-2. Write a manual rollback script (never relies on Prisma to generate it —
-   Prisma `db push` is forward-only on the POC). Place in
-   `prisma/sql/rollback_<migration_name>.sql`.
-3. Apply the rollback: `psql $DATABASE_URL < prisma/sql/rollback_<name>.sql`.
-4. `git reset --hard <previous-sha>` then `./scripts/deploy.sh update`.
+1. Identify the bad migration: `pnpm prisma migrate status`
+2. Write a **manual rollback SQL** (Prisma does not generate reverses).
+   Place in `ops/rollback/<timestamp>_<feature>_down.sql`.
+3. Apply the rollback: `psql $DATABASE_URL < ops/rollback/<timestamp>_down.sql`
+4. Mark the migration as rolled back: `pnpm prisma migrate resolve --rolled-back <timestamp>_<feature>`
+5. Revert code: `git reset --hard <previous-sha>`
+6. Deploy: `./deploy.sh update`
 
-**Safe migrations** (additive, nullable columns, additive enum values, new
-indexes) do not require a rollback script — the app code simply stops using
-the new column.
+**Safe migrations** (additive columns, new indexes, additive enum values) do
+not require a rollback script — the old code simply ignores the new column.
 
-**Unsafe migrations** (column drops, type conversions, NOT NULL additions,
-enum value removals) MUST ship with a rollback script reviewed during PR.
+**Unsafe migrations** (column drops, type conversions, NOT NULL constraints,
+enum removals) **MUST ship with a reviewed rollback script** in the PR.
+
+See [`docs/runbook/migrations.md` §7.3](./migrations.md#73--checklist-1er-deploy-prod-us-2267-blocker-pre-prod)
+for pre-prod checklist including rollback test.
 
 ---
 
 ## Database migrations
 
-The project uses `prisma db push` for the POC phase — no Prisma migrations
-directory. Column-type changes, enum additions, and any operation Prisma
-can't infer from the schema are hand-written in `prisma/sql/`:
+**Authoritative source**: [`docs/runbook/migrations.md`](./migrations.md) — this
+section is a summary only.
 
-| File                           | Purpose                                            |
-|--------------------------------|----------------------------------------------------|
-| `audit_immutability.sql`       | Postgres trigger preventing UPDATE/DELETE on `audit_logs` (HDS §IV.3) |
-| `cgm_partitioning.sql`         | Monthly partitions on `cgm_entries` — applied before seeding |
-| `basal_config_check.sql`       | Check constraints on basal dose fields             |
-| `patient_insulin_constraints.sql` | Referential + range constraints on therapy settings |
-| `period_type_enum.sql`         | `AverageData.periodType` VARCHAR → enum (PR #105)  |
-| `audit_log_request_id.sql`     | `AuditLog.requestId` column + index (PR #105)      |
-| `mfa_hardening.sql`            | `User.mfaLastUsedStep` + `Session.mfaVerified` (PR #106) |
+The project uses **versioned Prisma 7 migrations** (ADR #17). Every schema change
+lives in `prisma/migrations/<timestamp>_<name>/migration.sql` and is applied
+by `pnpm prisma migrate deploy` (idempotent).
 
-**Apply order** on a fresh env:
+Historical `.sql` scripts in `prisma/sql/` (audit triggers, CGM partitioning,
+constraints) have been **integrated into the baseline migration**
+(`20260508140000_post_deploy_sql`) or superseded. They remain for reference
+but **must not be re-applied on a new DB** — the baseline covers them.
+
+**On a fresh database**, the full schema is created and all constraints applied
+by the migration chain:
 
 ```sh
-pnpm prisma db push             # creates all tables
-psql $DATABASE_URL < prisma/sql/audit_immutability.sql
-psql $DATABASE_URL < prisma/sql/cgm_partitioning.sql
-psql $DATABASE_URL < prisma/sql/basal_config_check.sql
-psql $DATABASE_URL < prisma/sql/patient_insulin_constraints.sql
-psql $DATABASE_URL < prisma/sql/period_type_enum.sql
-psql $DATABASE_URL < prisma/sql/audit_log_request_id.sql
-psql $DATABASE_URL < prisma/sql/mfa_hardening.sql
+# Handled by deploy.sh automatically; never run manually in prod
+cd /opt/diabeo
+pnpm prisma migrate deploy    # applies all migrations to current state
+pnpm prisma migrate status    # verify "Database schema is up to date"
 ```
+
+**CGM partitioning** (`prisma/sql/cgm_partitioning.sql`) is **not** versioned
+because Prisma cannot model PostgreSQL partitioning. Apply only when volume
+justifies it (>10M entries):
+
+```sh
+psql $DATABASE_URL < prisma/sql/cgm_partitioning.sql
+```
+
+See **[`docs/runbook/migrations.md` §6–7](./migrations.md#6-cas-particuliers)**
+for partial indexes, CHECK constraints, and transitioning an existing DB from
+`db push` to versioned migrations.
 
 ---
 
@@ -185,7 +203,7 @@ pg_dump \
   $PG_DB
 ```
 
-Cron: `0 2 * * * /opt/diabeo/backoffice/scripts/backup-postgres.sh >> /var/log/diabeo-backup.log 2>&1`.
+Cron: `0 2 * * * /opt/diabeo/scripts/backup-postgres.sh >> /var/log/diabeo-backup.log 2>&1`.
 Setup steps in [Manual setup checklist](#manual-setup-checklist).
 
 Backups are rsync'd to OVH Object Storage bucket `diabeo-backups-prod`
@@ -276,8 +294,10 @@ be created on first drill).
 
 ## Secrets
 
-Stored in OVH Secret Manager (prod/recette) and synced to the VPS as
-Docker secrets (files mounted at `/run/secrets/<name>`).
+Stored in OVH Secret Manager (prod/recette) and deployed to each VPS as
+an **environment file** `/etc/diabeo/<env>.env` (permissions `chmod 600`,
+owned by `diabeo` user). See [`docs/runbook/vps-setup.md` §4](./vps-setup.md#4-variables-denvironnement--etcdiabeoenvenv)
+for generation and setup.
 
 | Secret                        | Purpose                          | Rotation         |
 |-------------------------------|----------------------------------|------------------|
@@ -417,30 +437,33 @@ SELECT * FROM audit_logs WHERE request_id = 'abc12345';
 ## Manual setup checklist
 
 One-time operator actions required before the automation scripts
-(`scripts/deploy.sh`, `scripts/backup-postgres.sh`, `scripts/decrypt-smoke.ts`)
-can run. Keep this list in sync with [scripts-index.md](./scripts-index.md).
+(`deploy.sh` at repo root — systemd, cf. `vps-setup.md`; `scripts/backup-postgres.sh`;
+`scripts/decrypt-smoke.ts`) can run. Keep this list in sync with
+[scripts-index.md](./scripts-index.md).
 
 ### Initial VPS bootstrap (per host)
 
-- [ ] SSH access hardened per Phase 13 US-1109 (keys only, no root login)
-- [ ] Node 22+ and pnpm 10+ in PATH (via Corepack or `curl -fsSL`)
-- [ ] `pm2` installed globally: `npm install -g pm2`
-- [ ] First-run app registration:
-      ```sh
-      cd /opt/diabeo/backoffice
-      pm2 start npm --name diabeo-api -- start
-      pm2 save
-      pm2 startup systemd    # follow the printed command
-      ```
-- [ ] Verify: `pm2 describe diabeo-api` shows "online"
-- [ ] All env vars from `.env.example` exported (validated by the app boot)
+See [`docs/runbook/vps-setup.md`](./vps-setup.md) for the complete provisioning
+sequence (complete, tested, production-ready). Quick checklist:
 
-### `scripts/deploy.sh` prerequisites
+- [ ] SSH access hardened — keys only, no root login
+- [ ] Node 22+ and pnpm 10+ in PATH (via Corepack: `corepack enable && corepack prepare pnpm@10 --activate`)
+- [ ] **Systemd service** configured (`/etc/systemd/system/diabeo-${APP_ENV}.service`)
+      and enabled (`sudo systemctl enable --now diabeo-${APP_ENV}`)
+- [ ] Environment file `/etc/diabeo/${APP_ENV}.env` (chmod 600) containing all
+      9 mandatory vars + functional vars
+- [ ] **Code cloned** into `/opt/diabeo` (not `/opt/diabeo/backoffice`)
+- [ ] `pnpm install --frozen-lockfile` + `pnpm prisma generate` completed
+- [ ] First deployment: `./deploy.sh update`
+- [ ] Service healthy: `systemctl status diabeo-${APP_ENV}` shows "active (running)"
+- [ ] Health endpoint: `curl -I https://${APP_URL}/api/health` returns 200
+
+### `deploy.sh` prerequisites (repo root)
 
 - [ ] Bootstrap above complete
-- [ ] `DATABASE_URL` exported in the deploying operator's shell
-- [ ] `scripts/deploy.sh` is executable (`chmod +x`) — handled by git, verify after first pull
-- [ ] Smoke-test: `./scripts/deploy.sh status` — returns without error
+- [ ] Environment file `/etc/diabeo/${APP_ENV}.env` exists and is readable by `diabeo`
+- [ ] `deploy.sh` is executable (`chmod +x`) — handled by git, verify after first clone
+- [ ] Smoke-test: `./deploy.sh status` — verifies service + DB + migration state
 
 ### `scripts/backup-postgres.sh` prerequisites
 
@@ -525,7 +548,7 @@ can run. Keep this list in sync with [scripts-index.md](./scripts-index.md).
       ```
 - [ ] **Install logrotate config** (prevents /var/log fill-up):
       ```sh
-      sudo cp /opt/diabeo/backoffice/scripts/logrotate.d/diabeo-backup \
+      sudo cp /opt/diabeo/scripts/logrotate.d/diabeo-backup \
         /etc/logrotate.d/diabeo-backup
       sudo chmod 0644 /etc/logrotate.d/diabeo-backup
       sudo touch /var/log/diabeo-backup.log /var/log/diabeo-deploy.log
@@ -534,7 +557,7 @@ can run. Keep this list in sync with [scripts-index.md](./scripts-index.md).
       ```
 - [ ] Dry-run as the backup user:
       ```sh
-      sudo -u diabeo-backup /opt/diabeo/backoffice/scripts/backup-postgres.sh
+      sudo -u diabeo-backup /opt/diabeo/scripts/backup-postgres.sh
       ```
       Exercises the full path: env + dump + sha256 manifest + SSE
       AES256 upload + rotation.
@@ -542,7 +565,7 @@ can run. Keep this list in sync with [scripts-index.md](./scripts-index.md).
       ```sh
       sudo crontab -u diabeo-backup -e
       # Add:
-      0 2 * * * /opt/diabeo/backoffice/scripts/backup-postgres.sh \
+      0 2 * * * /opt/diabeo/scripts/backup-postgres.sh \
         >> /var/log/diabeo-backup.log 2>&1
       ```
 
