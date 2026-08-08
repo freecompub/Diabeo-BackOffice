@@ -14,8 +14,8 @@ issue so the script can be productionized.
 |---------------------------------------------|--------|-------|-------|
 | `GET /api/health`                           | ✓ | backend | Implemented in PR #107 — `src/app/api/health/route.ts` |
 | `scripts/test-e2e.sh`                       | ✓ | QA | Existing, boots Playwright fixture stack |
-| `deploy.sh update` (repo root)              | ✓ | devops | **Autorité** : git pull + pnpm + `migrate deploy` + build + **`systemctl restart`** (systemd). Provisioning : `docs/runbook/vps-setup.md`. |
-| ~~`scripts/deploy.sh`~~ (legacy pm2)        | ⚠ | devops | **Périmé** — variante pm2 antérieure, supersédée par `deploy.sh` racine (systemd). Ne pas utiliser en prod ; à retirer. |
+| `deploy.sh update` (repo root)              | ✓ | devops | **Autorité** : git pull + pnpm + garde bootstrap + `migrate deploy` + build + **`systemctl restart`** + **sonde `/api/health`** (systemd). Provisioning : `docs/runbook/vps-setup.md`. |
+| ~~`scripts/deploy.sh`~~ (legacy pm2)        | ✗ | devops | **Supprimé** — variante pm2 antérieure. Health-probe + garde bootstrap portés dans `deploy.sh` racine (systemd). |
 | ~~`docker-compose.prod.yml`~~               | ✗ | devops | **Sans objet** — la prod tourne sous **systemd** (`next start`), pas Docker/pm2. Cf. `vps-setup.md §6`. |
 | `scripts/backup-postgres.sh` (cron 02:00)   | ✓ | devops | pg_dump custom + aws s3 cp + rotation locale 14 jours. Requires one-time OVH bucket + cron + `/etc/diabeo/backup.env` setup (runbook §Manual setup) |
 | `scripts/decrypt-smoke.ts`                  | ✓ | backend | Post-restore validation: samples 5 users × 5 encrypted fields via `safeDecryptField`. Run manually during the quarterly restore drill |
@@ -31,8 +31,8 @@ Roughly ordered by impact / effort:
 1. **OVH Cloud Monitoring alert on `/api/health`** — endpoint exists, just
    needs a 30 s ping rule + webhook to on-call Slack. ~30 min of ops work.
 2. ~~**`scripts/deploy.sh update`**~~ — **fait** : le déploiement passe par
-   `deploy.sh` (racine, systemd + `migrate deploy`). La variante `scripts/deploy.sh`
-   (pm2) est périmée.
+   `deploy.sh` (racine, systemd + `migrate deploy` + sonde `/api/health`). La
+   variante `scripts/deploy.sh` (pm2) a été **supprimée**.
 3. **`scripts/backup-postgres.sh` + cron** — OVH snapshots are good but
    application-level dumps give faster restore + portability.
 4. ~~**`docker-compose.prod.yml`**~~ — **sans objet** : la prod tourne sous
