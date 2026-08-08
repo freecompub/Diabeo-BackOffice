@@ -1,0 +1,60 @@
+name: Deploy recette
+
+# Déploiement AUTOMATIQUE de la recette à chaque merge sur `main`, UNIQUEMENT si
+# la CI (workflow « CI ») est verte. Exécuté sur un runner self-hosted installé
+# SUR le VPS recette (pas de clé SSH exposée). Voir docs/runbook/cd-recette.md.
+#
+# Prérequis (une seule fois) :
+#   - runner GitHub self-hosted enregistré sur le VPS avec le label `recette`,
+#     tournant sous l'utilisateur `diabeo` ;
+#   - /opt/diabeo déjà bootstrappé (clone + env + service systemd) — cf.
+#     docs/runbook/vps-setup.md ;
+#   - sudoers NOPASSWD pour `systemctl restart diabeo-recette` (le runner en a besoin) ;
+#   - Environment GitHub `recette` créé (Settings → Environments) — protections optionnelles.
+
+on:
+  # Se déclenche à la FIN du workflow CI (donc après les tests) sur main.
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  # Ré-déclenchement manuel depuis l'onglet Actions (ex. après un incident).
+  workflow_dispatch: {}
+
+# Un seul déploiement à la fois ; on n'interrompt pas un deploy en cours.
+concurrency:
+  group: deploy-recette
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    # Auto : seulement si la CI a réussi. Manuel (workflow_dispatch) : toujours.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
+    runs-on: [self-hosted, recette]
+    environment: recette
+    timeout-minutes: 20
+    steps:
+      - name: Déploiement recette (deploy.sh update sur le VPS)
+        # Le runner tourne sur le VPS : on invoque le deploy.sh DÉJÀ déployé dans
+        # /opt/diabeo, qui fait pull(main) + install + generate + migrate deploy +
+        # build + restart du service. Idempotent ; la recette est re-seedable.
+        run: |
+          set -euo pipefail
+          test -x /opt/diabeo/deploy.sh || { echo "::error::/opt/diabeo/deploy.sh introuvable — bootstrap VPS requis (docs/runbook/vps-setup.md)"; exit 1; }
+          cd /opt/diabeo
+          APP_ENV=recette ./deploy.sh update
+
+      - name: Récapitulatif
+        if: always()
+        run: |
+          {
+            echo "### Déploiement recette"
+            echo "- Statut : ${{ job.status }}"
+            echo "- Déclencheur : ${{ github.event_name }}"
+            echo "- Commit : \`${{ github.sha }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
