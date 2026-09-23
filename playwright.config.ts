@@ -5,7 +5,7 @@ import { defineConfig } from "@playwright/test"
  *
  * Prerequisites:
  *   1. PostgreSQL running (docker compose --profile local up)
- *   2. .env file configured (copy .env.example, fill DATABASE_URL + NEXTAUTH_SECRET)
+ *   2. .env file configured (copy .env.example, fill DATABASE_URL)
  *   3. Prisma migrations applied (pnpm prisma migrate dev)
  *   4. System deps for Chromium (sudo pnpm exec playwright install-deps chromium)
  *
