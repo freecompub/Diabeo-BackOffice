@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # Dépendances npm (pnpm) — alertes + PRs de mise à jour hebdomadaires.
+  # Protection supply-chain (cf. docs/runbook/cd-recette.md §7) : le runner
+  # self-hosted qui exécute `pnpm install` tourne sur le VPS recette.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+    groups:
+      dev-dependencies:
+        dependency-type: "development"
+
+  # Actions GitHub utilisées dans les workflows (ci.yml, deploy-recette.yml).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
