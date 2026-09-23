@@ -11,9 +11,7 @@
  * Fix : `pnpm.overrides.preact: ">=10.25.0 <11"` (package.json) → preact@10.29.2.
  * NB : l'override est une range (laisse les patchs de sécu) bornée `<11` car
  * Schedule-X / @preact/signals ne sont pas testés contre preact 11 — à relever
- * lors d'une future migration. L'override touche aussi la dep preact bundlée de
- * `@auth/core` (SSR next-auth), mais c'est inerte ici (next-auth = types only,
- * ADR #16).
+ * lors d'une future migration.
  *
  * Deux garde-fous :
  *   1. assertion déterministe sur `preact.version` — échoue immédiatement si
