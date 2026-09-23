@@ -28,7 +28,7 @@
     "@schedule-x/events-service": "^4.6.0",
     "@schedule-x/react": "^4.1.0",
     "@schedule-x/theme-default": "^4.6.0",
-    "@upstash/redis": "^1.37.0",
+    "@upstash/redis": "^1.38.4",
     "bcryptjs": "^3.0.3",
     "clamscan": "^2.4.0",
     "class-variance-authority": "^0.7.1",
