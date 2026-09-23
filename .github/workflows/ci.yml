@@ -268,3 +268,37 @@ jobs:
 
       - name: Design system anti-drift lint
         run: pnpm lint:design-system
+
+  # ──────────────────────────────────────────────────────────────
+  # Audit sécurité des dépendances npm (supply-chain)
+  # Bloque la CI — donc le déploiement recette auto qui se déclenche sur
+  # `conclusion == 'success'` du workflow CI (cf. deploy-recette.yml) — si une
+  # dépendance a une vulnérabilité connue CRITICAL. Le runner qui exécute
+  # `pnpm install` en déploiement tourne sur le VPS recette lui-même : ce gate
+  # est la protection principale contre un package compromis. Voir
+  # docs/runbook/cd-recette.md §7.
+  #
+  # Seuil = critical (pas high) : au moment de l'introduction de ce gate, le
+  # projet a un backlog de vulnérabilités `high` préexistantes (non liées à
+  # ce gate) qui nécessitent un travail de correction séparé — les bloquer
+  # immédiatement aurait cassé la CI sur `main` sans rapport avec la PR en
+  # cours. À durcir vers `high` une fois ce backlog résorbé.
+  # ──────────────────────────────────────────────────────────────
+  dependency-audit:
+    name: Dependency Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # `pnpm audit` lit pnpm-lock.yaml — pas besoin d'un `install` complet.
+      - name: pnpm audit (critical bloquant)
+        run: pnpm audit --audit-level=critical

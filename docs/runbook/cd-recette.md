@@ -114,3 +114,19 @@ diabeo ALL=(root) NOPASSWD: /usr/bin/systemctl restart diabeo-recette
 - Runner self-hosted : ne l'exposer **qu'à un repo de confiance** (pas de fork PR
   exécutant du code arbitraire — ici le trigger est `workflow_run`/`dispatch` sur
   `main`, jamais un `pull_request` de fork).
+- **Supply-chain npm** (le runner exécute `pnpm install` avec accès au VPS) :
+  - Scripts d'installation (`postinstall`/`preinstall`) **bloqués par défaut**
+    par pnpm 10 pour toute dépendance non listée dans `pnpm.onlyBuiltDependencies`
+    (`package.json`) — actuellement seuls `prisma`/`@prisma/engines` sont
+    autorisés (le `preinstall` de Prisma est requis). Aucun `--ignore-scripts`
+    ajouté à l'`install` : ça casserait ce script légitime et ferait doublon
+    avec une protection déjà active par défaut.
+  - **Gate CI bloquant** : job `dependency-audit` (`pnpm audit --audit-level=critical`)
+    dans le workflow `CI` — une dépendance **critical** connue empêche la CI de
+    passer, donc empêche `deploy-recette` de se déclencher. Seuil volontairement
+    `critical` (pas `high`) à l'introduction du gate : un backlog de
+    vulnérabilités `high` préexistant (indépendant de ce gate) nécessite une
+    correction séparée avant de pouvoir durcir le seuil sans casser `main`.
+  - **Dependabot** (`.github/dependabot.yml`) : alertes + PRs de mise à jour
+    hebdomadaires (npm + github-actions), pour ne pas laisser une dépendance
+    vulnérable traîner entre deux audits.
