@@ -33,7 +33,7 @@
     "clamscan": "^2.4.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "dotenv": "^17.4.2",
+    "dotenv": "^18.0.1",
     "firebase-admin": "^13.10.0",
     "jose": "^6.2.2",
     "lucide-react": "^1.7.0",
